@@ -34,7 +34,7 @@ implementation{
 
    event void Boot.booted(){
       call AMControl.start();
-      call NeighborDiscTimer.startPeriodic( 1000 );  
+      call NeighborDiscTimer.startPeriodic( 1000 );
       dbg(GENERAL_CHANNEL, "Booted\n");
    }
 

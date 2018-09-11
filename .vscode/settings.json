@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "*.nc": "c",
+        "*.jsx": "javascript",
+        "commandmsg.h": "c",
+        "packet.h": "c"
+    }
+}
