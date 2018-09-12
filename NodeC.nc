@@ -30,7 +30,8 @@ implementation {
 
     components CommandHandlerC;
     Node.CommandHandler -> CommandHandlerC;
-
-    components new TimerMilliC() as NeighborDiscTimer;
-    Node.NeighborDiscTimer -> NeighborDiscTimer;
+/*
+    components new Hashmap as PacketsReceivedMap;
+    Node.PacketsReceivedMap -> PacketsReceivedMap;
+*/
 }
