@@ -30,6 +30,9 @@ implementation {
 
     components CommandHandlerC;
     Node.CommandHandler -> CommandHandlerC;
+
+    components LocalTimeMilliC as LocalTime;
+    Node.LocalTime -> LocalTime;
 /*
     components new Hashmap as PacketsReceivedMap;
     Node.PacketsReceivedMap -> PacketsReceivedMap;

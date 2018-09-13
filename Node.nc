@@ -23,6 +23,9 @@ module Node{
     uses interface SimpleSend as Sender;
 
     uses interface CommandHandler;
+
+    uses interface LocalTime<TMilli> as LocalTime;
+
 /*
     uses interface Hashmap as PacketsReceivedMap;
 */
@@ -31,8 +34,7 @@ module Node{
 implementation{
     pack sendPackage;
     uint16_t sequenceNum = 0;
-	uint8_t initialTTL = 64;
-
+    uint16_t timestamp = 0;
     // Prototypes
     void makePack(pack *Package, uint16_t src, uint16_t dest, uint16_t TTL, uint16_t Protocol, uint16_t seq, uint8_t *payload, uint8_t length);
 
@@ -53,15 +55,17 @@ implementation{
     event void AMControl.stopDone(error_t err){}
 
     event message_t* Receive.receive(message_t* msg, void* payload, uint8_t len){
-          dbg(GENERAL_CHANNEL, "Packet Received\n");
-          if(len==sizeof(pack)) {
+            dbg(GENERAL_CHANNEL, "Packet Received\n");
+            if(len==sizeof(pack)) {
                 pack* myMsg=(pack*) payload;
                 if(TOS_NODE_ID == myMsg->dest) {
-                     logPack(myMsg);
-                     dbg(GENERAL_CHANNEL, "Package Payload Reached Destination\n");
+                    logPack(myMsg);
+                    timestamp = call LocalTime.get();
+                    dbg(GENERAL_CHANNEL, "TIME %d\n", timestamp);
+                    dbg(GENERAL_CHANNEL, "Package Payload Reached Destination\n");
                 } else if (myMsg->TTL > 0) {
-                     myMsg->TTL -= 1;
-                     call Sender.send(*myMsg, AM_BROADCAST_ADDR);
+                    myMsg->TTL -= 1;
+                    call Sender.send(*myMsg, AM_BROADCAST_ADDR);
                 }
                 return msg;
         }
@@ -74,7 +78,7 @@ implementation{
         dbg(GENERAL_CHANNEL, "PING EVENT \n");
         dbg(GENERAL_CHANNEL, "SENDER %d\n", TOS_NODE_ID);
         dbg(GENERAL_CHANNEL, "DEST %d\n", destination);
-        makePack(&sendPackage, TOS_NODE_ID, destination, initialTTL, PROTOCOL_PING, sequenceNum, payload, PACKET_MAX_PAYLOAD_SIZE);
+        makePack(&sendPackage, TOS_NODE_ID, destination, MAX_TTL, PROTOCOL_PING, sequenceNum, payload, PACKET_MAX_PAYLOAD_SIZE);
         call Sender.send(sendPackage, AM_BROADCAST_ADDR);
         sequenceNum++;
     }
