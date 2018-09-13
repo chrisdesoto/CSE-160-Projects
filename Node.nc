@@ -24,8 +24,6 @@ module Node{
 
     uses interface CommandHandler;
 
-    uses interface LocalTime<TMilli> as LocalTime;
-
 /*
     uses interface Hashmap as PacketsReceivedMap;
 */
@@ -34,7 +32,6 @@ module Node{
 implementation{
     pack sendPackage;
     uint16_t sequenceNum = 0;
-    uint16_t timestamp = 0;
     // Prototypes
     void makePack(pack *Package, uint16_t src, uint16_t dest, uint16_t TTL, uint16_t Protocol, uint16_t seq, uint8_t *payload, uint8_t length);
 
@@ -60,8 +57,6 @@ implementation{
                 pack* myMsg=(pack*) payload;
                 if(TOS_NODE_ID == myMsg->dest) {
                     logPack(myMsg);
-                    timestamp = call LocalTime.get();
-                    dbg(GENERAL_CHANNEL, "TIME %d\n", timestamp);
                     dbg(GENERAL_CHANNEL, "Package Payload Reached Destination\n");
                 } else if (myMsg->TTL > 0) {
                     myMsg->TTL -= 1;
@@ -71,6 +66,10 @@ implementation{
         }
         dbg(GENERAL_CHANNEL, "Unknown Packet Type %d\n", len);
         return msg;
+    }
+
+    bool packageSeen(uint16_t src, uint16_t seq) {
+
     }
 
 
