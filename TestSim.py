@@ -17,6 +17,7 @@ class TestSim:
     # CHANNELS - see includes/channels.h
     COMMAND_CHANNEL="command";
     GENERAL_CHANNEL="general";
+    MAPLIST_CHANNEL="maplist"
 
     # Project 1
     NEIGHBOR_CHANNEL="neighbor";

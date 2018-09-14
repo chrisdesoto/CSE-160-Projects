@@ -25,10 +25,6 @@ module Node{
     uses interface CommandHandler;
 
     uses interface MapList<uint16_t, uint16_t> as MapList;
-
-/*
-    uses interface Hashmap as PacketsReceivedMap;
-*/
 }
 
 implementation{
@@ -54,19 +50,23 @@ implementation{
     event void AMControl.stopDone(error_t err){}
 
     event message_t* Receive.receive(message_t* msg, void* payload, uint8_t len){
-            dbg(GENERAL_CHANNEL, "Packet Received\n");
-            if(len==sizeof(pack)) {
-                pack* myMsg=(pack*) payload;
-                if(TOS_NODE_ID == myMsg->dest) {
-                    logPack(myMsg);
-                    dbg(GENERAL_CHANNEL, "Package Payload Reached Destination\n");
-                } else if (myMsg->TTL > 0) {
-                    myMsg->TTL -= 1;
-                    call Sender.send(*myMsg, AM_BROADCAST_ADDR);
-                }
-                return msg;
+        //dbg(GENERAL_CHANNEL, "Packet Received\n");
+        pack* myMsg=(pack*) payload;
+        if(len!=sizeof(pack)) {
+            dbg(GENERAL_CHANNEL, "Unknown Packet Type %d\n", len); 
+        } else if((call MapList.containsVal(myMsg->src, myMsg->seq))) {                
+            dbg(GENERAL_CHANNEL, "Packet Seen Already. Dropping...\n");
+        } else if(myMsg->TTL == 0) {
+            dbg(GENERAL_CHANNEL, "TTL expired...\n");
+        } else if(TOS_NODE_ID == myMsg->dest) {
+            call MapList.insertVal(myMsg->src, myMsg->seq);
+            dbg(GENERAL_CHANNEL, "Packet Payload Reached Destination\n");
+            logPack(myMsg);
+        } else {
+            myMsg->TTL -= 1;
+            call MapList.insertVal(myMsg->src, myMsg->seq);
+            call Sender.send(*myMsg, AM_BROADCAST_ADDR);
         }
-        dbg(GENERAL_CHANNEL, "Unknown Packet Type %d\n", len);
         return msg;
     }
 
@@ -79,7 +79,7 @@ implementation{
         dbg(GENERAL_CHANNEL, "PING EVENT \n");
         dbg(GENERAL_CHANNEL, "SENDER %d\n", TOS_NODE_ID);
         dbg(GENERAL_CHANNEL, "DEST %d\n", destination);
-        makePack(&sendPackage, TOS_NODE_ID, destination, MAX_TTL, PROTOCOL_PING, sequenceNum, payload, PACKET_MAX_PAYLOAD_SIZE);
+        makePack(&sendPackage, TOS_NODE_ID, destination, 19, PROTOCOL_PING, sequenceNum, payload, PACKET_MAX_PAYLOAD_SIZE);
         call Sender.send(sendPackage, AM_BROADCAST_ADDR);
         sequenceNum++;
     }
