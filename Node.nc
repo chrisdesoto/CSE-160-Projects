@@ -24,6 +24,8 @@ module Node{
 
     uses interface CommandHandler;
 
+    uses interface MapList<uint16_t, uint16_t> as MapList;
+
 /*
     uses interface Hashmap as PacketsReceivedMap;
 */

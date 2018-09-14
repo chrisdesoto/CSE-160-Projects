@@ -1,9 +1,9 @@
 /**
- * ANDES Lab - University of California, Merced
- * This moudle provides a simple hashmap.
+ * MapList
+ * This moudle provides a maplist.
  *
- * @author UCM ANDES Lab
- * @date 2013/09/03
+ * @author Chris DeSoto
+ * @date   2018/09/10
  *
  */
 #include "../../includes/channels.h"
@@ -20,28 +20,40 @@ implementation{
 
     typedef struct List {
         s container[k];
-        uint16_t size = 0;
+        uint16_t size;
     } List;
 
-    typedef struct HashmapEntry {
-        List list;
+    typedef struct MapListEntry {
+        struct List list;
         t key;
-    } HashmapEntry;
+    } MapListEntry;
 
-    HashmapEntry map[n];
+    MapListEntry map[n];
     uint16_t numofVals;
 
     // Hashing Functions
-    uint32_t hash2(uint32_t k) {
-        return k%13;
+    uint32_t hash2(uint32_t key) {
+        return key%13;
     }
-    uint32_t hash3(uint32_t k) {
-        return 1+k%11;
+    uint32_t hash3(uint32_t key) {
+        return 1+key%11;
     }
 
-    uint32_t hash(uint32_t k, uint32_t i) {
+    uint32_t hash(uint32_t key, uint32_t i) {
         return (hash2(k)+ i*hash3(k))%HASH_MAX_SIZE;
     }
+
+    void pushback(List l, s val);
+    void pushfront(List l, s val);
+    s popback(List l);
+    s popfront(List l);
+    s front(List l);
+    s back(List l);
+    bool isEmpty(List l);
+    uint16_t size(List l);
+    s get(List l, uint16_t position);
+    bool removeBack(List l, s val);
+    bool contains(List l, s val);
 
 /******************************************************/
 /*  
@@ -50,7 +62,7 @@ implementation{
 
 	void pushback(List l, s val){
 		// Check to see if we have room for the input.
-		if(l.size == MAX_SIZE){
+		if(l.size == LIST_MAX_SIZE){
             popfront(l);
         }
         // Put it in.
@@ -59,11 +71,11 @@ implementation{
 	}
 
 	void pushfront(List l, s val){
+        int32_t i;
 		// Check to see if we have room for the input.
-		if(size == MAX_SIZE){
+		if(l.size == LIST_MAX_SIZE){
             popback(l);
         }
-        int32_t i;
         // Shift everything to the right.
         for(i = l.size-1; i>=0; i--){
             l.container[i+1] = l.container[i];
@@ -74,7 +86,7 @@ implementation{
 	}
 
 	s popback(List l){
-		s returnVal = l.container[size];
+		s returnVal = l.container[l.size];
 		// We don't need to actually remove the value, we just need to decrement
 		// the size.
 		if(l.size > 0) {
@@ -84,8 +96,8 @@ implementation{
 	}
 
 	s popfront(List l){
-		s returnVal = l.container[0];
 		uint16_t i;
+		s returnVal = l.container[0];
 		if(l.size>0){
 			// Move everything to the left.
 			for(i = 0; i < l.size-1; i++){
@@ -103,7 +115,7 @@ implementation{
 
 	// Peek tail
 	s back(List l){
-		return l.container[size];
+		return l.container[l.size];
 	}
 
 	bool isEmpty(List l){
@@ -121,14 +133,14 @@ implementation{
 		return l.container[position];
 	}
 
-	bool remove(List l, s val){
-        int i;
-        int j;
-        for(i = l.size-1; i >= 0; i--){
+	bool removeBack(List l, s val){
+        uint16_t i;
+        uint16_t j;
+        for(i = l.size-1; i >= 0; i--) {
             // If we find the key matches 
-            if(l.container[i] == s) {
+            if(l.container[i] == val) {
                 // Move everything to the left
-                for(j = i+1; j < l.size-1; j++){
+                for(j = i+1; j < l.size-1; j++) {
                     l.container[j-1] = l.container[j];
                 }
                 // Decrement the size
@@ -142,7 +154,7 @@ implementation{
 	bool contains(List l, s val){
         int i;
         for(i = l.size-1; i >= 0; i--){
-            if(l.container[i] == s) {
+            if(l.container[i] == val) {
                 return TRUE;
             }
         }
@@ -151,13 +163,16 @@ implementation{
 
 /******************************************************/
 
-    command void Hashmap.insertVal(t key, s val) {
+    command void MapList.insertVal(t key, s val) {
         uint32_t i=0;	uint32_t j=0;
         do {
             // Generate a hash.
             j = hash(k, i);
             // If the bucket is free or if we found the correct bucket
             if(map[j].key == 0 || map[j].key == key) {
+                if(isEmpty(map[j].list)) {
+                    numofVals++;
+                }
                 // Push the val onto back of the list
                 pushback(map[j].list, val);
                 // Make sure the correct key is assigned to the bucket
@@ -172,60 +187,73 @@ implementation{
     }
 
 
-    command void Hashmap.removeVal(t key, s val){
+    command void MapList.removeVal(t key, s val) {
         uint32_t i=0;	uint32_t j=0;
         do {
             j=hash(k, i);
             if(map[j].key == key){
-                remove(map[j].list, val);
+                removeBack(map[j].list, val);
+                if(isEmpty(map[j].list)) {
+                    numofVals--;
+                }
             }
             i++;
-        } while(i<HASH_MAX_SIZE);
-
+        } while(i < HASH_MAX_SIZE);
     }
-
     
-    command t Hashmap.get(uint32_t k){
-        uint32_t i=0;	uint32_t j=0;
-        do{
+    /*
+    command *s MapList.getList(t key) {
+        uint32_t i=0;
+        do {
             j=hash(k, i);
             if(map[j].key == k)
                 return map[j].value;
             i++;
-        }while(i<HASH_MAX_SIZE);
-
-        // We have to return something so we return the first key
-        return map[0].value;
+        } while(i < HASH_MAX_SIZE);
+        return map[0].value.list.container;
     }
+    */
 
-    command bool Hashmap.contains(uint32_t k){
-        uint32_t i=0;	uint32_t j=0;
-        /*
-        if(k == EMPTY_KEY)
-	{
-		return FALSE;
-	}
-	*/
-        do{
+    command bool MapList.containsList(t key) {
+        uint32_t i=0;
+        do {
             j=hash(k, i);
-            if(map[j].key == k)
+            if(map[j].key == key)
                 return TRUE;
             i++;
-        }while(i<HASH_MAX_SIZE);
+        } while(i < HASH_MAX_SIZE);
         return FALSE;
     }
 
-    command bool Hashmap.isEmpty(){
+    command bool MapList.containsVal(t key, s val) {
+        uint32_t i=0; uint32_t j=0;
+        do {
+            j=hash(k, i);
+            if(map[j].key == key)
+                return contains(map[j].list, val);
+            i++;
+        } while(i < HASH_MAX_SIZE);
+        return FALSE;
+    }
+
+    command bool MapList.isEmpty() {
         if(numofVals==0)
             return TRUE;
         return FALSE;
     }
 
-    command uint32_t* Hashmap.getKeys(){
-        return keys;
+    command bool MapList.listIsEmpty() {
+        uint32_t i=0;
+        do {
+            j=hash(k, i);
+            if(map[j].key == key)
+                return isEmpty(map[j].list);
+            i++;
+        } while(i < HASH_MAX_SIZE);
+        return FALSE;
     }
 
-    command uint16_t Hashmap.size(){
+    command uint16_t MapList.size() {
         return numofVals;
     }
 }

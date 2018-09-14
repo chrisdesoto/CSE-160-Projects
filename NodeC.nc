@@ -31,6 +31,9 @@ implementation {
     components CommandHandlerC;
     Node.CommandHandler -> CommandHandlerC;
 
+    components new MapListC(20, 100);
+    Node.MapList -> MapListC;
+
 /*
     components new Hashmap as PacketsReceivedMap;
     Node.PacketsReceivedMap -> PacketsReceivedMap;
