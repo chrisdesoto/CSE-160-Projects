@@ -23,7 +23,7 @@ module Node{
 
    uses interface CommandHandler;
 
-   uses interface Timer<TMilli> as NeighborDiscTimer;
+   //uses interface Timer<TMilli> as NeighborDiscTimer;
 }
 
 implementation{
@@ -34,13 +34,13 @@ implementation{
 
    event void Boot.booted(){
       call AMControl.start();
-      call NeighborDiscTimer.startPeriodic( 1000 );
+      //call NeighborDiscTimer.startPeriodic( 1000 );
       dbg(GENERAL_CHANNEL, "Booted\n");
    }
 
-   event void NeighborDiscTimer.fired(){
-       dbg(GENERAL_CHANNEL, "NeighborDiscTimer fired @ %s.\n", sim_time_string());
-   }
+   //event void NeighborDiscTimer.fired(){
+       //dbg(GENERAL_CHANNEL, "NeighborDiscTimer fired @ %s.\n", sim_time_string());
+  // }
 
    event void AMControl.startDone(error_t err){
       if(err == SUCCESS){

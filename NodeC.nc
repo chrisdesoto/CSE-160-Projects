@@ -31,6 +31,6 @@ implementation {
     components CommandHandlerC;
     Node.CommandHandler -> CommandHandlerC;
 
-    components new TimerMilliC() as NeighborDiscTimer;
-    Node.NeighborDiscTimer -> NeighborDiscTimer;
+    //components new TimerMilliC() as NeighborDiscTimer;
+    //Node.NeighborDiscTimer -> NeighborDiscTimer;
 }
