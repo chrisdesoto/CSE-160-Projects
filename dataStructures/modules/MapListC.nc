@@ -1,6 +1,6 @@
 /**
  * MapList
- * This module provides a MapList with an array of buckets (t @integer(), List<s @integer()>).
+ * This component provides a MapList with an array of buckets (t @integer(), List<s @integer()>).
  * Types t and s should be integers. Size is constrained to the upper bound of uint16_t
  *
  * @author Chris DeSoto
@@ -12,7 +12,7 @@ generic module MapListC(typedef t @integer(), typedef s @integer(), uint16_t n, 
     provides interface MapList<t, s>;
 }
 
-implementation{
+implementation {
     uint16_t HASH_MAX_SIZE = n;
     uint16_t LIST_MAX_SIZE = k;
 
@@ -30,8 +30,12 @@ implementation{
     } MapListEntry;
 
     MapListEntry map[n];
-    MapListEntry *lru[n];
+    MapListEntry* lru[n];
     uint16_t numofVals = 0;
+
+/*******************************************************  
+**  Map functions
+********************************************************/
 
     // Hashing Functions
     uint16_t hash2(t key) {
@@ -47,6 +51,7 @@ implementation{
     // LRU Functions
     int lruContains(MapListEntry* e) {
         uint16_t i;
+        if(numofVals == 0) { return -1; }
         for(i = numofVals-1; i > 0; i) {
             if(lru[i] == e) {
                 return i;
@@ -55,20 +60,20 @@ implementation{
         return -1;
     }
     void accessed(MapListEntry* e) {
-        uint16_t i;    uint16_t idx;
-        if(numofVals == HASH_MAX_SIZE)
-            return;
+        uint16_t i;    int idx;
         idx = lruContains(e);
         if(idx > 0) {
-            for(i = idx; i > 0; i) {
+            for(; idx > 0; idx--) {
                 lru[idx] = lru[idx-1];
             }
-            lru[0] = e;
         } else if(idx == -1) {
-            for(i = numofVals-1; i > 0; i) {
-                lru[i] = lru[i-1];
+            if(numofVals != 0) {
+                for(i = numofVals; i > 0; i--) {
+                    lru[i] = lru[i-1];
+                }
             }
         }
+        lru[0] = e;
     }
     void evict(t key, s val) {
         MapListEntry* e = lru[numofVals-1];
@@ -217,14 +222,15 @@ implementation{
             j=hash(key, i);
             // If the bucket is free or if we found the correct bucket
             if(map[j].key == 0 || map[j].key == key) {
-                if(isEmpty(&map[j].list)) {
-                    numofVals++;
-                }
                 // Push the val onto back of the list
                 insertBack(&map[j].list, val);
                 // Make sure the correct key is assigned to the bucket
                 if(map[j].key == 0) {
                     map[j].key = key;
+                }
+                accessed(&map[j]);
+                if(isEmpty(&map[j].list)) {
+                    numofVals++;
                 }
                 dbg(MAPLIST_CHANNEL,"Inserted val into MapList, size: %d\n", map[j].list.size);
                 break;
@@ -233,6 +239,9 @@ implementation{
         // This will allow a total of HASH_MAX_SIZE misses. It can be greater,
         // But it is unlikely to occur.
         } while(i < HASH_MAX_SIZE);
+        if(numofVals == HASH_MAX_SIZE) {
+            evict(key, val);
+        }
     }
 
     command void MapList.removeVal(t key, s val) {
@@ -243,7 +252,9 @@ implementation{
                 removeValFromList(&map[j].list, val);
                 if(isEmpty(&map[j].list)) {
                     map[j].key = 0;
-                    numofVals--;                    
+                    numofVals--;
+                } else {
+                    accessed(&map[j]);
                 }
                 dbg(MAPLIST_CHANNEL,"Removed val: %d into MapList\n", val);
             }
@@ -255,8 +266,10 @@ implementation{
         uint16_t i=0;   uint16_t j=0;
         do {
             j=hash(key, i);
-            if(map[j].key == key)
+            if(map[j].key == key) {
+                //accessed(&map[j]);
                 return TRUE;
+            }
             i++;
         } while(i < HASH_MAX_SIZE);
         return FALSE;
@@ -268,6 +281,7 @@ implementation{
             j=hash(key, i);
             if(map[j].key == key) {
                 //dbg(MAPLIST_CHANNEL,"Checking if list for key: %d contains val\n", key);
+                //accessed(&map[j]);
                 return contains(&map[j].list, val);
             }
             i++;
