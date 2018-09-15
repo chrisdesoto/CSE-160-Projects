@@ -1,7 +1,7 @@
 /**
  * MapList
- * This module provides a MapList with an array of buckets (t, List<s>).
- * Size is constrained to the upper bound of uint16_t
+ * This module provides a MapList with an array of buckets (t @integer(), List<s @integer()>).
+ * Types t and s should be integers. Size is constrained to the upper bound of uint16_t
  *
  * @author Chris DeSoto
  * @date   2018/09/10
@@ -30,18 +30,52 @@ implementation{
     } MapListEntry;
 
     MapListEntry map[n];
+    MapListEntry *lru[n];
     uint16_t numofVals = 0;
 
     // Hashing Functions
-    uint16_t hash2(uint16_t key) {
+    uint16_t hash2(t key) {
         return key%13;
     }
-    uint16_t hash3(uint16_t key) {
+    uint16_t hash3(t key) {
         return 1+key%11;
     }
-
-    uint16_t hash(uint16_t key, uint16_t i) {
+    uint16_t hash(t key, uint16_t i) {
         return (hash2(k)+ i*hash3(k))%HASH_MAX_SIZE;
+    }
+
+    // LRU Functions
+    int lruContains(MapListEntry* e) {
+        uint16_t i;
+        for(i = numofVals-1; i > 0; i) {
+            if(lru[i] == e) {
+                return i;
+            }
+        }
+        return -1;
+    }
+    void accessed(MapListEntry* e) {
+        uint16_t i;    uint16_t idx;
+        if(numofVals == HASH_MAX_SIZE)
+            return;
+        idx = lruContains(e);
+        if(idx > 0) {
+            for(i = idx; i > 0; i) {
+                lru[idx] = lru[idx-1];
+            }
+            lru[0] = e;
+        } else if(idx == -1) {
+            for(i = numofVals-1; i > 0; i) {
+                lru[i] = lru[i-1];
+            }
+        }
+    }
+    void evict(t key, s val) {
+        MapListEntry* e = lru[numofVals-1];
+        e->key = key;
+        e->list.container[0] = val;
+        e->list.size = 1;
+        accessed(e);
     }
 
 /*******************************************************  

@@ -1,7 +1,7 @@
 /**
  * MapList
- * This module provides a MapList with an array of buckets (t, List<s>).
- * Size is constrained to the upper bound of uint16_t
+ * This module provides a MapList with an array of buckets (t @integer(), List<s @integer()>).
+ * Types t and s should be integers. Size is constrained to the upper bound of uint16_t
  *
  * @author Chris DeSoto
  * @date   2018/09/10

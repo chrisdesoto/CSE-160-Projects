@@ -11,7 +11,7 @@
 #include "includes/CommandMsg.h"
 #include "includes/packet.h"
 
-configuration NodeC{
+configuration NodeC {
 }
 implementation {
     components MainC;

@@ -14,7 +14,7 @@
 #include "includes/sendInfo.h"
 #include "includes/channels.h"
 
-module Node{
+module Node {
     uses interface Boot;
 
     uses interface SplitControl as AMControl;
@@ -27,7 +27,7 @@ module Node{
     uses interface MapList<uint16_t, uint16_t> as MapList;
 }
 
-implementation{
+implementation {
     pack sendPackage;
     uint16_t sequenceNum = 0;
     // Prototypes
@@ -50,8 +50,8 @@ implementation{
     event void AMControl.stopDone(error_t err){}
 
     event message_t* Receive.receive(message_t* msg, void* payload, uint8_t len){
-        //dbg(GENERAL_CHANNEL, "Packet Received\n");
-        pack* myMsg=(pack*) payload;
+        pack* myMsg = (pack*) payload;
+        dbg(GENERAL_CHANNEL, "Packet Received\n");
         if(len!=sizeof(pack)) {
             dbg(GENERAL_CHANNEL, "Unknown Packet Type %d\n", len); 
         } else if((call MapList.containsVal(myMsg->src, myMsg->seq))) {                
@@ -66,7 +66,7 @@ implementation{
             myMsg->TTL -= 1;
             call MapList.insertVal(myMsg->src, myMsg->seq);
             call Sender.send(*myMsg, AM_BROADCAST_ADDR);
-        }
+        } 
         return msg;
     }
 
