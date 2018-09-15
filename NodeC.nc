@@ -11,7 +11,7 @@
 #include "includes/CommandMsg.h"
 #include "includes/packet.h"
 
-configuration NodeC{
+configuration NodeC {
 }
 implementation {
     components MainC;
@@ -30,6 +30,9 @@ implementation {
 
     components CommandHandlerC;
     Node.CommandHandler -> CommandHandlerC;
+
+    components new MapListC(uint16_t, uint16_t, 20, 100);
+    Node.MapList -> MapListC;
 
 /*
     components new Hashmap as PacketsReceivedMap;
