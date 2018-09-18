@@ -8,20 +8,22 @@
  */
 
 #include <Timer.h>
-#include "includes/CommandMsg.h"
-#include "includes/packet.h"
+//#include "includes/CommandMsg.h"
+//#include "includes/packet.h"
 
-generic configuration NeighborDiscoveryC {
+configuration NeighborDiscoveryC {
     provides interface NeighborDiscovery;
 }
 
 implementation {
     components MainC;
     components Node;
+    components NeighborDiscoveryP;
+    NeighborDiscovery = NeighborDiscoveryP;
     
-    components new TimerMilliC() as NeighborDiscoveryTimer;    
-    NeighborDiscoveryP.NeighborDiscoveryTimer -> NeighborDiscoveryTimer;
+    //components new TimerMilliC() as NeighborDiscoveryTimer;    
+    //NeighborDiscoveryP.NeighborDiscoveryTimer -> NeighborDiscoveryTimer;
 
-    components RandomC as Random;
-    NeighborDiscoveryP.Random -> Random;
+    //components RandomC as Random;
+    //NeighborDiscoveryP.Random -> Random;
 }

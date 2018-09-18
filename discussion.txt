@@ -1,0 +1,5 @@
+1.
+
+2. By having both flooding checks and TTL, we can prevent both endless cyclic packet flooding and packet transmission away from the destination. If we had only TTL implemented without flooding checks then packets would be forwarded uneccessarily in cycles and indeirect routes until their TTLs expired. This is wasted bandwidth on the network as the packet has already been forwarded thorugh those nodes. With flooding checks and no TTL, packets can continue to be forwarded further and further away from the destination. If the topology of the network is somewhat linear this could result in a majority of the network receiving the packet despite being nowhere close to the destination. This situation also results in wasted bandwidth.
+
+3. 

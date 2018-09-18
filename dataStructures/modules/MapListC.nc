@@ -280,8 +280,8 @@ implementation {
         do {
             j=hash(key, i);
             if(map[j].key == key) {
-                //dbg(MAPLIST_CHANNEL,"Checking if list for key: %d contains val\n", key);
-                //accessed(&map[j]);
+                dbg(MAPLIST_CHANNEL,"Checking if list for key: %d contains val\n", key);
+                accessed(&map[j]);
                 return contains(&map[j].list, val);
             }
             i++;
