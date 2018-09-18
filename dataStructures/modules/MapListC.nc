@@ -52,7 +52,7 @@ implementation {
     int lruContains(MapListEntry* e) {
         uint16_t i;
         if(numofVals == 0) { return -1; }
-        for(i = numofVals-1; i > 0; i) {
+        for(i = numofVals-1; i > 0; i--) {
             if(lru[i] == e) {
                 return i;
             }

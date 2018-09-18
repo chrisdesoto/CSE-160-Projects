@@ -34,9 +34,9 @@ implementation {
     uint16_t sequenceNum = 0;
     // Prototypes
     void makePack(pack *Package, uint16_t src, uint16_t dest, uint16_t TTL, uint16_t Protocol, uint16_t seq, uint8_t *payload, uint8_t length);
-    void handlePing(pack* myMsg);
-    void handlePingReply(pack* myMsg);
-    
+    void handlePayloadReceived(pack *myMsg);
+    void handleForward(pack* myMsg);
+        
     event void Boot.booted(){
         call AMControl.start();
         dbg(GENERAL_CHANNEL, "Booted\n");
@@ -59,51 +59,36 @@ implementation {
         dbg(GENERAL_CHANNEL, "Packet Received!\n");
         if(len!=sizeof(pack)) {
             dbg(GENERAL_CHANNEL, "Unknown Packet Type %d\n", len); 
-        } else if(myMsg->protocol == PROTOCOL_PING) {
-            handlePing(myMsg);
-        } else if(myMsg->protocol == PROTOCOL_PINGREPLY) {
-            handlePingReply(myMsg);
+        } else if(call PacketsReceived.containsVal(myMsg->src, myMsg->seq)) {                
+            dbg(FLOODING_CHANNEL, "Packet seen already. Dropping...\n");
+        } else if(myMsg->TTL == 0) {
+            dbg(FLOODING_CHANNEL, "TTL expired...\n");
+        } else if(myMsg->dest == TOS_NODE_ID) {
+            handlePayloadReceived(myMsg);
+        } else {
+            handleForward(myMsg);
         }
         return msg;
     }
 
-    void handlePing(pack* myMsg) {
-        uint16_t temp;
-        if(call PacketsReceived.containsVal(myMsg->src, myMsg->seq)) {                
-            dbg(FLOODING_CHANNEL, "Packet seen already. Dropping...\n");
-        } else if(myMsg->TTL == 0) {
-            dbg(FLOODING_CHANNEL, "TTL expired...\n");
-        } else if(TOS_NODE_ID == myMsg->dest) {
+    void handlePayloadReceived(pack *myMsg) {
+        if(myMsg->protocol == PROTOCOL_PING) {
             dbg(FLOODING_CHANNEL, "Packet payload reached destination!\n");
             logPack(myMsg);
             call PacketsReceived.insertVal(myMsg->src, myMsg->seq);
-            temp = myMsg->dest;
-            myMsg->dest = myMsg->src;
-            myMsg->src = temp;
-            myMsg->protocol = PROTOCOL_PINGREPLY;
-            myMsg->TTL = BETTER_TTL;
-            call Sender.send(*myMsg, AM_BROADCAST_ADDR);
+            makePack(&sendPackage, myMsg->dest, myMsg->src, BETTER_TTL, PROTOCOL_PINGREPLY, sequenceNum++,(uint8_t *) myMsg->payload, PACKET_MAX_PAYLOAD_SIZE);
+            call Sender.send(sendPackage, AM_BROADCAST_ADDR);
             dbg(FLOODING_CHANNEL, "Pingreply Sent!\n");
-        } else {
-            dbg(FLOODING_CHANNEL, "Packet forwarded with new TTL and logged...\n");
-            myMsg->TTL -= 1;
-            call PacketsReceived.insertVal(myMsg->src, myMsg->seq);
-            call Sender.send(*myMsg, AM_BROADCAST_ADDR);
+        } else if(myMsg->protocol == PROTOCOL_PINGREPLY) {
+            dbg(FLOODING_CHANNEL, "Pingreply received!\n");
         }
     }
 
-    void handlePingReply(pack* myMsg) {
-        if(myMsg->dest == TOS_NODE_ID) {
-            call NeighborDiscovery.neighborReply(myMsg);
-            dbg(NEIGHBOR_CHANNEL, "Neighbor discovery reply received!\n");
-        } else if(myMsg->TTL > 0) {
-            myMsg->src = TOS_NODE_ID;
-            myMsg->TTL -= 1;
-            call Sender.send(*myMsg, AM_BROADCAST_ADDR);
-            dbg(NEIGHBOR_CHANNEL, "Neighbor discovery reply sent!\n");
-        } else {
-            dbg(NEIGHBOR_CHANNEL, "Neighbor discovery packet dropped!\n");
-        }
+    void handleForward(pack* myMsg) {
+        dbg(FLOODING_CHANNEL, "Packet forwarded with new TTL and logged...\n");
+        myMsg->TTL -= 1;
+        call PacketsReceived.insertVal(myMsg->src, myMsg->seq);
+        call Sender.send(*myMsg, AM_BROADCAST_ADDR);
     }
 
     event void CommandHandler.ping(uint16_t destination, uint8_t *payload){
