@@ -38,14 +38,15 @@ implementation {
 ********************************************************/
 
     // Hashing Functions
-    uint16_t hash2(t key) {
+    uint32_t hash2(uint32_t key){
         return key%13;
     }
-    uint16_t hash3(t key) {
+    uint32_t hash3(uint32_t key){
         return 1+key%11;
     }
-    uint16_t hash(t key, uint16_t i) {
-        return (hash2(k)+ i*hash3(k))%HASH_MAX_SIZE;
+
+    uint32_t hash(uint32_t key, uint32_t i){
+        return (hash2(key)+ i*hash3(key))%HASH_MAX_SIZE;
     }
 
     // LRU Functions
@@ -187,11 +188,11 @@ implementation {
 
 	bool contains(List* l, s val) {
         uint16_t i;
-        //dbg(MAPLIST_CHANNEL,"Checking list for val: %d\n", val);
+        dbg(MAPLIST_CHANNEL,"Checking list for val: %d\n", val);
         if(!isEmpty(l)) {
             for(i = 0; i < l->size; i++) {
                 if(l->container[i] == val) {
-                    //dbg(MAPLIST_CHANNEL,"List val: %d already present\n", l->container[i]);
+                    dbg(MAPLIST_CHANNEL,"List val: %d already present\n", l->container[i]);
                     return TRUE;
                 }
             }
@@ -207,7 +208,7 @@ implementation {
         }
         dbg(MAPLIST_CHANNEL,"Printing list. Size: %d\n", l->size);
         for(i = 0; i < l->size; i++) {
-            dbg(MAPLIST_CHANNEL,"List val: %d in MapList\n", l->container[i]);
+            dbg(MAPLIST_CHANNEL,"\tList val: %d in MapList\n", l->container[i]);
         }
     }
 
@@ -216,7 +217,8 @@ implementation {
 ********************************************************/
 
     command void MapList.insertVal(t key, s val) {
-        uint16_t i=0;	uint16_t j=0;
+        uint32_t i=0;	uint32_t j=0;
+        //dbg(MAPLIST_CHANNEL,"Inserting val into MapList, size: %d\n", map[j].list.size);
         do {
             // Generate a hash.
             j=hash(key, i);
@@ -229,11 +231,10 @@ implementation {
                     map[j].key = key;
                 }
                 accessed(&map[j]);
-                if(isEmpty(&map[j].list)) {
+                if(!isEmpty(&map[j].list)) {
                     numofVals++;
                 }
-                dbg(MAPLIST_CHANNEL,"Inserted val into MapList, size: %d\n", map[j].list.size);
-                break;
+                return;
             }
             i++;
         // This will allow a total of HASH_MAX_SIZE misses. It can be greater,
@@ -245,7 +246,7 @@ implementation {
     }
 
     command void MapList.removeVal(t key, s val) {
-        uint16_t i=0;	uint16_t j=0;
+        uint32_t i=0;	uint32_t j=0;
         do {
             j=hash(key, i);
             if(map[j].key == key) {
@@ -263,11 +264,11 @@ implementation {
     }    
 
     command bool MapList.containsList(t key) {
-        uint16_t i=0;   uint16_t j=0;
+        uint32_t i=0;   uint32_t j=0;
         do {
             j=hash(key, i);
             if(map[j].key == key) {
-                //accessed(&map[j]);
+                accessed(&map[j]);
                 return TRUE;
             }
             i++;
@@ -276,16 +277,18 @@ implementation {
     }
 
     command bool MapList.containsVal(t key, s val) {
-        uint16_t i=0;   uint16_t j=0;        
+        uint32_t i=0;   uint32_t j=0;        
+        //dbg(MAPLIST_CHANNEL,"Checking if list with key: %d contains val\n", key);
         do {
             j=hash(key, i);
             if(map[j].key == key) {
-                dbg(MAPLIST_CHANNEL,"Checking if list for key: %d contains val\n", key);
+                //dbg(MAPLIST_CHANNEL,"Checking if list for key: %d contains val\n", key);
                 accessed(&map[j]);
                 return contains(&map[j].list, val);
             }
             i++;
         } while(i < HASH_MAX_SIZE);
+        //dbg(MAPLIST_CHANNEL,"Didn't find key: %d\n", key);
         return FALSE;
     }
 
@@ -296,7 +299,7 @@ implementation {
     }
 
     command bool MapList.listIsEmpty(t key) {
-        uint16_t i=0;   uint16_t j=0;
+        uint32_t i=0;   uint32_t j=0;
         do {
             j=hash(key, i);
             if(map[j].key == key)
@@ -307,7 +310,7 @@ implementation {
     }
 
     command void MapList.printList(t key) {
-        uint16_t i=0;   uint16_t j=0;
+        uint32_t i=0;   uint32_t j=0;
         do {
             j=hash(key, i);
             if(map[j].key == key) {
