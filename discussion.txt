@@ -2,7 +2,7 @@
 
 2. By having both flooding checks and TTL, we can prevent both endless cyclic packet flooding and packet transmission away from the destination. If we had only TTL implemented without flooding checks then packets would be forwarded uneccessarily in cycles and indeirect routes until their TTLs expired. This is wasted bandwidth on the network as the packet has already been forwarded thorugh those nodes. With flooding checks and no TTL, packets can continue to be forwarded further and further away from the destination. If the topology of the network is somewhat linear this could result in a majority of the network receiving the packet despite being nowhere close to the destination. This situation also results in wasted bandwidth.
 
-3. 
+3. Best case situation would be if all nodes are connected in a line(1-2-3-4-...-n). Worst case; if all the nodes were connected to every other node. This would cause lot of collisions and packet drops.
 
 4. Using neighbor discovery we can set up a system for routing packets towards their destination along the most efficient route(s). Each node would only need to know the direction to send the packet on its next hop, through one of its neighbor nodes. This would require keeping a list (or table) of nodes and the neighbor node through which to route the packet.
 
