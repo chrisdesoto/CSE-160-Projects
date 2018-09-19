@@ -106,7 +106,9 @@ implementation {
         sequenceNum++;
     }
 
-    event void CommandHandler.printNeighbors() {}
+    event void CommandHandler.printNeighbors() {
+        call NeighborDiscovery.printNeighbors();
+    }
 
     event void CommandHandler.printRouteTable() {}
 
