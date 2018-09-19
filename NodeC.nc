@@ -31,7 +31,7 @@ implementation {
     components CommandHandlerC;
     Node.CommandHandler -> CommandHandlerC;
 
-    components new MapListC(uint16_t, uint16_t, 20, 100);
+    components new MapListC(uint16_t, uint16_t, 20, 20);
     Node.PacketsReceived -> MapListC;
 
     components NeighborDiscoveryC;
