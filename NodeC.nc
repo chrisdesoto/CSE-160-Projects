@@ -24,15 +24,12 @@ implementation {
 
     components ActiveMessageC;
     Node.AMControl -> ActiveMessageC;
-
-    components new SimpleSendC(AM_PACK);
-    Node.Sender -> SimpleSendC;
-
+    
     components CommandHandlerC;
     Node.CommandHandler -> CommandHandlerC;
 
-    components new MapListC(uint16_t, uint16_t, 20, 20);
-    Node.PacketsReceived -> MapListC;
+    components FloodingC;
+    Node.Flooding -> FloodingC;
 
     components NeighborDiscoveryC;
     Node.NeighborDiscovery -> NeighborDiscoveryC;

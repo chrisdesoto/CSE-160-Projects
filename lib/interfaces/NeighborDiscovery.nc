@@ -1,4 +1,3 @@
-
 #include "../../includes/packet.h"
 
 interface NeighborDiscovery {

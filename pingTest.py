@@ -21,8 +21,8 @@ def main():
     s.addChannel(s.GENERAL_CHANNEL);
 #    s.addChannel(s.HASHMAP_CHANNEL);
 #    s.addChannel(s.MAPLIST_CHANNEL);
-#    s.addChannel(s.FLOODING_CHANNEL);
-    s.addChannel(s.NEIGHBOR_CHANNEL);
+    s.addChannel(s.FLOODING_CHANNEL);
+#    s.addChannel(s.NEIGHBOR_CHANNEL);
 
     # After sending a ping, simulate a little to prevent collision.
     s.runTime(1);
