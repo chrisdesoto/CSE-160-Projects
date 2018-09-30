@@ -58,7 +58,8 @@ implementation {
         call Flooding.ping(destination, payload);
     }
 
-    event void CommandHandler.printNeighbors() {
+    event void CommandHandler.printNeighbors(uint16_t node_id {
+        
         call NeighborDiscovery.printNeighbors();
     }
 
