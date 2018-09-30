@@ -34,7 +34,7 @@ implementation {
     event void AMControl.startDone(error_t err) {
         if(err == SUCCESS) {
             dbg(GENERAL_CHANNEL, "Radio On\n");
-        }else{
+        } else {
             //Retry until successful
             call AMControl.start();
         }
@@ -58,9 +58,10 @@ implementation {
         call Flooding.ping(destination, payload);
     }
 
-    event void CommandHandler.printNeighbors(uint16_t node_id {
-        
-        call NeighborDiscovery.printNeighbors();
+    event void CommandHandler.printNeighbors(uint16_t node_id) {
+        if(node_id == TOS_NODE_ID) {
+            call NeighborDiscovery.printNeighbors();        
+        }
     }
 
     event void CommandHandler.printRouteTable() {}
