@@ -15,7 +15,7 @@ module FloodingP {
 implementation {
     pack sendPackage;
     uint16_t sequenceNum = 0;
-   // Prototypes
+    // Prototypes
     void makePack(pack *Package, uint16_t src, uint16_t dest, uint16_t TTL, uint16_t Protocol, uint16_t seq, uint8_t *payload, uint8_t length);
     void handlePayloadReceived(pack *myMsg);
     void handleForward(pack* myMsg);
