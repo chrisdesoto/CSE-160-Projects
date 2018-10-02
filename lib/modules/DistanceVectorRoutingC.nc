@@ -20,4 +20,7 @@ implementation {
 
     components new SimpleSendC(AM_PACK);
     DistanceVectorRoutingP.Sender -> SimpleSendC;
+
+    components NeighborDiscoveryC;
+    Node.NeighborDiscovery -> NeighborDiscoveryC;
 }

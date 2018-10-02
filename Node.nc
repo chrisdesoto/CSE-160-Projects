@@ -64,7 +64,7 @@ implementation {
         }
     }
 
-    event void CommandHandler.printRouteTable() {}
+    event void CommandHandler.printRouteTable(uint16_t node_id) {}
 
     event void CommandHandler.printLinkState() {}
 

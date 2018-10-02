@@ -65,7 +65,7 @@ implementation{
 
             case CMD_ROUTETABLE_DUMP:
                 dbg(COMMAND_CHANNEL, "Command Type: Route Table Dump\n");
-                signal CommandHandler.printRouteTable();
+                signal CommandHandler.printRouteTable(buff[0]);
                 break;
 
             case CMD_TEST_CLIENT:

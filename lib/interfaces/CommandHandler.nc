@@ -2,7 +2,7 @@ interface CommandHandler{
    // Events
    event void ping(uint16_t destination, uint8_t *payload);
    event void printNeighbors(uint16_t node_id);
-   event void printRouteTable();
+   event void printRouteTable(uint16_t node_id);
    event void printLinkState();
    event void printDistanceVector();
    event void setTestServer();
