@@ -22,5 +22,11 @@ implementation {
     DistanceVectorRoutingP.Sender -> SimpleSendC;
 
     components NeighborDiscoveryC;
-    Node.NeighborDiscovery -> NeighborDiscoveryC;
+    DistanceVectorRoutingP.NeighborDiscovery -> NeighborDiscoveryC;
+
+    components new TimerMilliC() as DVRTimer;
+    DistanceVectorRoutingP.DVRTimer -> DVRTimer;
+
+    components RandomC as Random;
+    DistanceVectorRoutingP.Random -> Random;
 }

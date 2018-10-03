@@ -31,4 +31,6 @@ implementation {
     components new HashmapC(uint16_t, 20);
     NeighborDiscoveryP.NeighborMap -> HashmapC;
 
+    components DistanceVectorRoutingC;
+    NeighborDiscoveryP.DistanceVectorRouting -> DistanceVectorRoutingC;
 }

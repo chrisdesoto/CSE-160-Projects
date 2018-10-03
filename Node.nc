@@ -21,6 +21,7 @@ module Node {
     uses interface CommandHandler;
     uses interface Flooding;
     uses interface NeighborDiscovery as NeighborDiscovery;
+    uses interface DistanceVectorRouting as DistanceVectorRouting;
 }
 
 implementation {
@@ -48,6 +49,8 @@ implementation {
                 dbg(GENERAL_CHANNEL, "Unknown Packet Type %d\n", len);
         } else if(myMsg->dest == 0) {
             call NeighborDiscovery.handleNeighbor(myMsg);
+        } else if(myMsg->protocol == PROTOCOL_DV) {
+            call DistanceVectorRouting.handleDV(myMsg);
         } else {
             call Flooding.handleFlooding(myMsg);
         }
@@ -60,7 +63,7 @@ implementation {
 
     event void CommandHandler.printNeighbors(uint16_t node_id) {
         if(node_id == TOS_NODE_ID) {
-            call NeighborDiscovery.printNeighbors();        
+            call NeighborDiscovery.printNeighbors();
         }
     }
 

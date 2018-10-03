@@ -12,6 +12,7 @@ module NeighborDiscoveryP {
     uses interface Random as Random;
     uses interface SimpleSend as Sender;
     uses interface Hashmap<uint16_t> as NeighborMap;
+    uses interface DistanceVectorRouting as DistanceVectorRouting;
 }
 
 implementation {
@@ -44,13 +45,13 @@ implementation {
         call NeighborDiscovery.printNeighbors();
         // Remove old neighbors
         for(; i < call NeighborMap.size(); i++) {
-            if(keys[i] != 0 && call NeighborMap.get(keys[i])-call NeighborDiscoveryTimer.getNow() > 10000) {
+            if(keys[i] != 0 && call NeighborMap.get(keys[i])-call NeighborDiscoveryTimer.getNow() > 30000) {
                 dbg(NEIGHBOR_CHANNEL, "Removing Neighbor %d\n", keys[i]);
                 call NeighborMap.remove(keys[i]);
+                // TODO: Send lost neighbor to DVR
+                call DistanceVectorRouting.handleNeighborChange(keys[i]);
             }
         }
-        // Print neighbors
-        /* call NeighborDiscovery.printNeighbors(); */
         // Send out a new neighbor discovery ping
         makePack(&sendPackage, TOS_NODE_ID, 0, 1, PROTOCOL_PING, 0, &payload, PACKET_MAX_PAYLOAD_SIZE);
         call Sender.send(sendPackage, AM_BROADCAST_ADDR);
@@ -66,6 +67,14 @@ implementation {
                 dbg(NEIGHBOR_CHANNEL, "\tNeighbor: %d\n", keys[i]);
             }
         }
+    }
+
+    command uint32_t* NeighborDiscovery.getNeighbors() {
+        return call NeighborMap.getKeys();
+    }
+
+    command uint16_t NeighborDiscovery.getNeighborListSize() {
+        return call NeighborMap.size();
     }
 
     void makePack(pack *Package, uint16_t src, uint16_t dest, uint16_t TTL, uint16_t protocol, uint16_t seq, uint8_t* payload, uint8_t length) {
