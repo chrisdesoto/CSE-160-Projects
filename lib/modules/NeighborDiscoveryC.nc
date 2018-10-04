@@ -28,7 +28,7 @@ implementation {
     components RandomC as Random;
     NeighborDiscoveryP.Random -> Random;
 
-    components new HashmapC(uint16_t, 20);
+    components new HashmapC(uint32_t, 20);
     NeighborDiscoveryP.NeighborMap -> HashmapC;
 
     components DistanceVectorRoutingC;

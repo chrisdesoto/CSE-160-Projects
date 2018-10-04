@@ -30,6 +30,7 @@ implementation {
         call AMControl.start();
         dbg(GENERAL_CHANNEL, "Booted\n");
         call NeighborDiscovery.start();
+        call DistanceVectorRouting.start();
     }
 
     event void AMControl.startDone(error_t err) {
@@ -61,13 +62,13 @@ implementation {
         call Flooding.ping(destination, payload);
     }
 
-    event void CommandHandler.printNeighbors(uint16_t node_id) {
-        if(node_id == TOS_NODE_ID) {
+    event void CommandHandler.printNeighbors() {
             call NeighborDiscovery.printNeighbors();
-        }
     }
 
-    event void CommandHandler.printRouteTable(uint16_t node_id) {}
+    event void CommandHandler.printRouteTable() {
+        call DistanceVectorRouting.printRouteTable();
+    }
 
     event void CommandHandler.printLinkState() {}
 

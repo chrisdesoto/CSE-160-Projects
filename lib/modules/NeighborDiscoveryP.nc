@@ -11,7 +11,7 @@ module NeighborDiscoveryP {
     uses interface Timer<TMilli> as NeighborDiscoveryTimer;
     uses interface Random as Random;
     uses interface SimpleSend as Sender;
-    uses interface Hashmap<uint16_t> as NeighborMap;
+    uses interface Hashmap<uint32_t> as NeighborMap;
     uses interface DistanceVectorRouting as DistanceVectorRouting;
 }
 
@@ -33,6 +33,9 @@ implementation {
             call Sender.send(*myMsg, AM_BROADCAST_ADDR);
             dbg(NEIGHBOR_CHANNEL, "Neighbor Discovery PING!\n");
         } else if(myMsg->protocol == PROTOCOL_PINGREPLY && myMsg->dest == 0) {
+            if(call NeighborMap.contains(myMsg->src)) {
+                // New neighbor found
+            }
             call NeighborMap.insert(myMsg->src, call NeighborDiscoveryTimer.getNow());
             dbg(NEIGHBOR_CHANNEL, "Neighbor Discovery PINGREPLY! Found Neighbor %d\n", myMsg->src);
         }
@@ -45,11 +48,10 @@ implementation {
         call NeighborDiscovery.printNeighbors();
         // Remove old neighbors
         for(; i < call NeighborMap.size(); i++) {
-            if(keys[i] != 0 && call NeighborMap.get(keys[i])-call NeighborDiscoveryTimer.getNow() > 30000) {
+            if(keys[i] != 0 && (call NeighborDiscoveryTimer.getNow()-call NeighborMap.get(keys[i])) > 40000) {
                 dbg(NEIGHBOR_CHANNEL, "Removing Neighbor %d\n", keys[i]);
-                call NeighborMap.remove(keys[i]);
-                // TODO: Send lost neighbor to DVR
                 call DistanceVectorRouting.handleNeighborChange(keys[i]);
+                call NeighborMap.remove(keys[i]);
             }
         }
         // Send out a new neighbor discovery ping

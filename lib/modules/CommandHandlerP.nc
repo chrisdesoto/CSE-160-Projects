@@ -55,7 +55,7 @@ implementation{
 
             case CMD_NEIGHBOR_DUMP:
                 dbg(COMMAND_CHANNEL, "Command Type: Neighbor Dump\n");
-                signal CommandHandler.printNeighbors(buff[0]);
+                signal CommandHandler.printNeighbors();
                 break;
 
             case CMD_LINKSTATE_DUMP:
@@ -65,7 +65,7 @@ implementation{
 
             case CMD_ROUTETABLE_DUMP:
                 dbg(COMMAND_CHANNEL, "Command Type: Route Table Dump\n");
-                signal CommandHandler.printRouteTable(buff[0]);
+                signal CommandHandler.printRouteTable();
                 break;
 
             case CMD_TEST_CLIENT:
