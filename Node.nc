@@ -53,13 +53,15 @@ implementation {
         } else if(myMsg->protocol == PROTOCOL_DV) {
             call DistanceVectorRouting.handleDV(myMsg);
         } else {
-            call Flooding.handleFlooding(myMsg);
+            call DistanceVectorRouting.routePacket(myMsg);
+            //call Flooding.handleFlooding(myMsg);
         }
         return msg;
     }
 
     event void CommandHandler.ping(uint16_t destination, uint8_t *payload) {
-        call Flooding.ping(destination, payload);
+        call DistanceVectorRouting.ping(destination, payload);
+        //call Flooding.ping(destination, payload);
     }
 
     event void CommandHandler.printNeighbors() {

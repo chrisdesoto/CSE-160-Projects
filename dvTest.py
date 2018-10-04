@@ -41,11 +41,23 @@ def main():
     s.routeDMP(2)
     s.runTime(10)
 
-    s.moteOff(3);
+    s.ping(1, 8, "YOOOOO")
+    s.runTime(10)
+
+    s.ping(2, 17, "AHHHHHYYYYY")
+    s.runTime(20)
+
+    s.moteOff(3)
     s.runTime(110);
+
+    s.ping(2, 5, "LOLOLOLO")
+    s.runTime(20)
 
     s.routeDMP(2)
     s.runTime(20);
+
+    s.routeDMP(4)
+    s.runTime(20)
     
 if __name__ == '__main__':
     main()

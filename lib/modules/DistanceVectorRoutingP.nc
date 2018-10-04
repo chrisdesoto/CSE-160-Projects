@@ -2,11 +2,10 @@
 #include "../../includes/channels.h"
 #include "../../includes/packet.h"
 #include "../../includes/protocol.h"
-#include "../../includes/channels.h"
 
 #define MAX_ROUTES  22
 #define MAX_COST    17
-#define DV_TTL       3
+#define DV_TTL       4
 #define STRATEGY    "SPLIT_HORIZON"
 //#define STRATEGY    "POISON_REVERSE"
 
@@ -32,8 +31,9 @@ implementation {
     Route routingTable[MAX_ROUTES];
     pack routePack;
 
-    void makeRoutePack(pack *Package, uint16_t src, uint16_t dest, uint16_t TTL, uint16_t protocol, uint16_t seq, Route* payload);
+    void makePack(pack *Package, uint16_t src, uint16_t dest, uint16_t TTL, uint16_t Protocol, uint16_t seq, void *payload, uint8_t length);
     void initilizeRoutingTable();
+    uint8_t findNextHop(uint8_t dest);
     void addRoute(uint8_t dest, uint8_t nextHop, uint8_t cost, uint8_t ttl);
     void removeRoute(uint8_t idx);
     void decrementTTLs();
@@ -43,7 +43,7 @@ implementation {
     command error_t DistanceVectorRouting.start() {
         initilizeRoutingTable();
         call DVRTimer.startOneShot(30000);
-        dbg(NEIGHBOR_CHANNEL, "Distance Vector Routing Started!\n");
+        //dbg(ROUTING_CHANNEL, "Distance Vector Routing Started!\n");
     }
 
     event void DVRTimer.fired() {
@@ -57,6 +57,30 @@ implementation {
             inputNeighbors();
             // Send out routing table
             triggerUpdate();
+        }
+    }
+
+    command void DistanceVectorRouting.ping(uint16_t destination, uint8_t *payload) {
+        makePack(&routePack, TOS_NODE_ID, destination, MAX_TTL, PROTOCOL_PING, 0, payload, PACKET_MAX_PAYLOAD_SIZE);
+        dbg(ROUTING_CHANNEL, "PING FROM %d TO %d\n", TOS_NODE_ID, destination);
+        logPack(&routePack);
+        call DistanceVectorRouting.routePacket(&routePack);
+    }
+
+    command void DistanceVectorRouting.routePacket(pack* myMsg) {
+        uint8_t nextHop;
+        if(myMsg->dest == TOS_NODE_ID) {
+            dbg(ROUTING_CHANNEL, "Packet has reached destination %d!!!\n", TOS_NODE_ID);
+            return;
+        }
+        nextHop = findNextHop(myMsg->dest);
+        if(nextHop == 0) {
+            dbg(ROUTING_CHANNEL, "No route to destination. Dropping packet...\n");
+            logPack(myMsg);
+        } else {
+            dbg(ROUTING_CHANNEL, "Node %d routing packet through %d\n", TOS_NODE_ID, nextHop);
+            logPack(myMsg);
+            call Sender.send(*myMsg, nextHop);
         }
     }
 
@@ -127,6 +151,16 @@ implementation {
         addRoute(TOS_NODE_ID, TOS_NODE_ID, 0, DV_TTL);
     }
 
+    uint8_t findNextHop(uint8_t dest) {
+        uint16_t i;
+        for(i = 1; i < numRoutes; i++) {
+            if(routingTable[i].dest == dest) {
+                return routingTable[i].nextHop;
+            }
+        }
+        return 0;
+    }
+
     void addRoute(uint8_t dest, uint8_t nextHop, uint8_t cost, uint8_t ttl) {
         // Add route to the end of the current list
         if(numRoutes != MAX_ROUTES) {
@@ -136,7 +170,7 @@ implementation {
             routingTable[numRoutes].ttl = ttl;
             numRoutes++;
         }
-        //dbg(ROUTING_CHANNEL, "Added entry in rounting table for node: %u\n", dest);
+        //dbg(ROUTING_CHANNEL, "Added entry in routing table for node: %u\n", dest);
     }
 
     void removeRoute(uint8_t idx) {
@@ -192,7 +226,7 @@ implementation {
                 addRoute(neighbors[i], neighbors[i], 1, DV_TTL);
                 newNeighborfound = TRUE;
             } else if(numRoutes == MAX_ROUTES) {
-                dbg(ROUTING_CHANNEL, "Rounting table full. Cannot add entry for node: %u\n", neighbors[i]);
+                dbg(ROUTING_CHANNEL, "Routing table full. Cannot add entry for node: %u\n", neighbors[i]);
             }
             routeFound = FALSE;
         }
@@ -219,7 +253,7 @@ implementation {
                     isSwapped = TRUE;
                 }
                 // Send packet
-                makeRoutePack(&routePack, TOS_NODE_ID, neighbors[i], 1, PROTOCOL_DV, 0, &routingTable[j]);
+                makePack(&routePack, TOS_NODE_ID, neighbors[i], 1, PROTOCOL_DV, 0, &routingTable[j], sizeof(Route));
                 call Sender.send(routePack, neighbors[i]);
                 if(isSwapped) {
                     routingTable[j].cost = tempCost;
@@ -229,13 +263,13 @@ implementation {
         }
     }
 
-    void makeRoutePack(pack *Package, uint16_t src, uint16_t dest, uint16_t TTL, uint16_t protocol, uint16_t seq, Route* payload) {
+    void makePack(pack *Package, uint16_t src, uint16_t dest, uint16_t TTL, uint16_t protocol, uint16_t seq, void* payload, uint8_t length) {
         Package->src = src;
         Package->dest = dest;
         Package->TTL = TTL;
         Package->seq = seq;
         Package->protocol = protocol;
-        memcpy(Package->payload, payload, sizeof(Route));
-    }
+        memcpy(Package->payload, payload, length);
+    }    
 
 }
