@@ -45,15 +45,18 @@ implementation {
         uint16_t i = 0;
         uint8_t payload = 0;
         uint32_t* keys = call NeighborMap.getKeys();
+        bool neighborChange = FALSE;
         call NeighborDiscovery.printNeighbors();
         // Remove old neighbors
         for(; i < call NeighborMap.size(); i++) {
             if(keys[i] != 0 && (call NeighborDiscoveryTimer.getNow()-call NeighborMap.get(keys[i])) > 40000) {
                 dbg(NEIGHBOR_CHANNEL, "Removing Neighbor %d\n", keys[i]);
-                call DistanceVectorRouting.handleNeighborChange(keys[i]);
+                neighborChange = TRUE;
                 call NeighborMap.remove(keys[i]);
             }
         }
+        if(neighborChange)
+            call DistanceVectorRouting.handleNeighborChange(keys[i]);
         // Send out a new neighbor discovery ping
         makePack(&sendPackage, TOS_NODE_ID, 0, 1, PROTOCOL_PING, 0, &payload, PACKET_MAX_PAYLOAD_SIZE);
         call Sender.send(sendPackage, AM_BROADCAST_ADDR);

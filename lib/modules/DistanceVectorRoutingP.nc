@@ -95,7 +95,7 @@ implementation {
                     // If route's next hop is myMsg->dest -> update
                     // If route costs less -> update
                     if(routingTable[i].nextHop == myMsg->src) {
-                        routingTable[i].cost = receivedRoute->cost + 1;
+                        routingTable[i].cost = (receivedRoute->cost+1 < MAX_COST) ? receivedRoute->cost+1 : MAX_COST;
                         routingTable[i].ttl = DV_TTL;
                         //dbg(ROUTING_CHANNEL, "Update to route: %d from neighbor: %d with new cost %d\n", routingTable[i].dest, routingTable[i].nextHop, routingTable[i].cost);
                     } else if(receivedRoute->cost + 1 <= MAX_COST && receivedRoute->cost + 1 <= routingTable[i].cost) {
@@ -122,17 +122,7 @@ implementation {
         dbg(ROUTING_CHANNEL, "Neighbor discovery has lost neighbor %u, removing...\n", lostNeighbor);
         for(i = 1; i < numRoutes; i++) {
             if(routingTable[i].dest == lostNeighbor) {
-                for(j = i+1; j < numRoutes; j++) {
-                    routingTable[j-1].dest = routingTable[j].dest;
-                    routingTable[j-1].nextHop = routingTable[j].nextHop;
-                    routingTable[j-1].cost = routingTable[j].cost;
-                    routingTable[j-1].ttl = routingTable[j].ttl;
-                }
-                routingTable[j-1].dest = 0;
-                routingTable[j-1].nextHop = 0;
-                routingTable[j-1].cost = 0;
-                routingTable[j-1].ttl = 0;
-                numRoutes--;
+                routingTable[i].cost = MAX_COST;
                 break;
             }
         }
