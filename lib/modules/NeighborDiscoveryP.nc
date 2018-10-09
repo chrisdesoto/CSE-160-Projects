@@ -53,7 +53,7 @@ implementation {
                 call DistanceVectorRouting.handleNeighborChange(keys[i]);
                 call NeighborMap.remove(keys[i]);
             }
-        }            
+        }
         // Send out a new neighbor discovery ping
         makePack(&sendPackage, TOS_NODE_ID, 0, 1, PROTOCOL_PING, 0, &payload, PACKET_MAX_PAYLOAD_SIZE);
         call Sender.send(sendPackage, AM_BROADCAST_ADDR);
