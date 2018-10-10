@@ -270,8 +270,6 @@ implementation {
             while(j < numRoutes) {
                 // Split Horizon/Poison Reverse
                 if(neighbors[i] == routingTable[j].nextHop && STRATEGY == STRATEGY_SPLIT_HORIZON) {
-                    /*j++;
-                    continue;*/
                     temp = routingTable[j].nextHop;
                     routingTable[j].nextHop = 0;
                     isSwapped = TRUE;
