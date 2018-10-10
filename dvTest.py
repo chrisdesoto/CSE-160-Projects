@@ -26,7 +26,7 @@ def main():
     s.addChannel(s.ROUTING_CHANNEL);
 
     # After sending a ping, simulate a little to prevent collision.
-    s.runTime(30);
+    s.runTime(50);
     #s.ping(2, 3, "Hello, World");
 
     s.routeDMP(1);
@@ -36,7 +36,7 @@ def main():
     s.runTime(10);
 
     s.routeDMP(3);
-    s.runTime(110);
+    s.runTime(60);
 
     s.routeDMP(9)
     s.runTime(10)
@@ -48,18 +48,18 @@ def main():
     s.runTime(20)
 
     s.moteOff(3)
-    s.runTime(110);
+    s.runTime(40);
 
-    s.ping(2, 5, "LOLOLOLO")
+    s.ping(2, 4, "LOLOLOLO")
     s.runTime(20)
 
     s.routeDMP(2)
     s.runTime(20);
 
-    s.routeDMP(5)
-    s.runTime(250)
+    s.routeDMP(4)
+    s.runTime(20)
 
-    s.routeDMP(5)
+    s.routeDMP(4)
     s.runTime(20)
 
 if __name__ == '__main__':

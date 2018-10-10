@@ -6,8 +6,8 @@
 #define MAX_ROUTES  22
 #define MAX_COST    17
 #define DV_TTL       4
-#define STRATEGY    "SPLIT_HORIZON"
-//#define STRATEGY    "POISON_REVERSE"
+//#define STRATEGY    "SPLIT_HORIZON"
+#define STRATEGY    "POISON_REVERSE"
 
 module DistanceVectorRoutingP {
     provides interface DistanceVectorRouting;
@@ -43,7 +43,7 @@ implementation {
     command error_t DistanceVectorRouting.start() {
         initilizeRoutingTable();
         call DVRTimer.startOneShot(40000);
-        //dbg(ROUTING_CHANNEL, "Distance Vector Routing Started!\n");
+        dbg(ROUTING_CHANNEL, "Distance Vector Routing Started!\n");
     }
 
     event void DVRTimer.fired() {
@@ -97,24 +97,26 @@ implementation {
                 if(receivedRoutes->dest == routingTable[j].dest) {
                     // If route's next hop is myMsg->dest -> update
                     // If route costs less -> update
-                    if(receivedRoutes->nextHop == 0) {
+                    if(routingTable[j].nextHop == 0) {
                         // Split Horizon
                     } else if(routingTable[j].nextHop == myMsg->src) {
+                        // Sender is source of table entry -> update table entry.
                         routingTable[j].cost = (receivedRoutes->cost+1 < MAX_COST) ? receivedRoutes->cost+1 : MAX_COST;
                         //dbg(ROUTING_CHANNEL, "Update to route: %d from neighbor: %d with new cost %d\n", routingTable[i].dest, routingTable[i].nextHop, routingTable[i].cost);
-                    } else if(receivedRoutes->cost + 1 <= MAX_COST && receivedRoutes->cost + 1 < routingTable[j].cost) {
+                    } else if(receivedRoutes->cost + 1 < MAX_COST && receivedRoutes->cost + 1 < routingTable[j].cost) {
+                        // More optimal route found
                         routingTable[j].nextHop = myMsg->src;
                         routingTable[j].cost = receivedRoutes->cost + 1;
-                        //dbg(ROUTING_CHANNEL, "More optimal route found to dest: %d through %d at cost %d\n", routingTable[i].dest, routingTable[i].nextHop, routingTable[i].cost);
+                        dbg(ROUTING_CHANNEL, "More optimal route found to dest: %d through %d at cost %d\n", receivedRoutes->dest, receivedRoutes->nextHop, receivedRoutes->cost +1);
                     }
-
-                    routingTable[j].ttl = DV_TTL;                    
+                    if(routingTable[j].cost != MAX_COST)
+                        routingTable[j].ttl = DV_TTL;                    
                     routePresent = TRUE;
                     break;
                 }
             }
             // If route not in table and there is space -> add it
-            if(!routePresent && numRoutes != MAX_ROUTES) {
+            if(!routePresent && numRoutes != MAX_ROUTES && receivedRoutes->nextHop != 0) {
                 addRoute(receivedRoutes->dest, myMsg->src, receivedRoutes->cost+1, DV_TTL);
                 routesAdded = TRUE;
             }
@@ -131,11 +133,10 @@ implementation {
         uint16_t i, j;
         if(lostNeighbor == 0)
             return;
-        dbg(ROUTING_CHANNEL, "Neighbor discovery has lost neighbor %u, removing...\n", lostNeighbor);
+        dbg(ROUTING_CHANNEL, "Neighbor discovery has lost neighbor %u. Distance is now infinite...\n", lostNeighbor);
         for(i = 1; i < numRoutes; i++) {
-            if(routingTable[i].dest == lostNeighbor) {
+            if(routingTable[i].dest == lostNeighbor || routingTable[i].nextHop == lostNeighbor) {
                 routingTable[i].cost = MAX_COST;
-                break;
             }
         }
         triggerUpdate();
@@ -157,7 +158,7 @@ implementation {
         uint16_t i;
         for(i = 1; i < numRoutes; i++) {
             if(routingTable[i].dest == dest) {
-                return routingTable[i].nextHop;
+                return (routingTable[i].cost == MAX_COST) ? 0 : routingTable[i].nextHop;
             }
         }
         return 0;
@@ -193,7 +194,7 @@ implementation {
     }
 
     void decrementTTLs() {
-        uint8_t i;
+        uint8_t i, j;
         for(i = 1; i < numRoutes; i++) {
             // If valid entry in the routing table -> decrement the TTL
             if(routingTable[i].ttl != 0) {
@@ -203,6 +204,7 @@ implementation {
             if(routingTable[i].ttl == 0) {                
                 dbg(ROUTING_CHANNEL, "Route stale, removing: %u\n", routingTable[i].dest);
                 removeRoute(i);
+                triggerUpdate();
             }
         }
     }
@@ -261,6 +263,8 @@ implementation {
             while(j < numRoutes) {
                 // Split Horizon/Poison Reverse
                 if(neighbors[i] == routingTable[j].nextHop && isSplitHorizon) {
+                    /*j++;
+                    continue;*/
                     temp = routingTable[j].nextHop;
                     routingTable[j].nextHop = 0;
                     isSwapped = TRUE;
@@ -291,7 +295,7 @@ implementation {
                 }
                 if(isSwapped && isSplitHorizon) {
                     routingTable[j].nextHop = temp;
-                } else if(isSwapped && isPoisonReverse) {
+                }else if(isSwapped && isPoisonReverse) {
                     routingTable[j].cost = temp;
                 }
                 isSwapped = FALSE;
