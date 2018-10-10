@@ -47,6 +47,9 @@ def main():
     s.ping(2, 7, "AHHHHHYYYYY")
     s.runTime(20)
 
+    s.printMessage(3, "Mote 3 signing off...")
+    s.runTime(5)
+
     s.moteOff(3)
     s.runTime(40);
 

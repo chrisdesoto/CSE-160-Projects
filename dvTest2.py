@@ -12,7 +12,7 @@ def main():
     s.loadTopo("dv_test2.topo")
 
     # Add a noise model to all of the motes.
-    s.loadNoise("no_noise.txt")
+    s.loadNoise("some_noise.txt")
 
     # Turn on all of the sensors.
     s.bootAll()
@@ -44,6 +44,9 @@ def main():
 
     s.ping(1, 5, "YOOOOO")
     s.runTime(10)
+
+    s.printMessage(4, "Mote 4 signing off...")
+    s.runTime(5)
 
     s.moteOff(4)
     s.runTime(40)

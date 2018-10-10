@@ -73,6 +73,11 @@ implementation{
                 signal CommandHandler.setTestClient();
                 break;
 
+            case CMD_PRINT_MESSAGE:
+                dbg(COMMAND_CHANNEL, "Command Type: Print Message\n");
+                signal CommandHandler.printMessage(&buff[0]);
+                break;
+
             case CMD_TEST_SERVER:
                 dbg(COMMAND_CHANNEL, "Command Type: Client\n");
                 signal CommandHandler.setTestServer();

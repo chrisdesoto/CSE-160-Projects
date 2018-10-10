@@ -1,10 +1,11 @@
-
-
 #include <Timer.h>
 #include "../../includes/channels.h"
 #include "../../includes/packet.h"
 #include "../../includes/protocol.h"
 #include "../../includes/channels.h"
+
+#define ND_TTL  5
+
 module NeighborDiscoveryP {
     provides interface NeighborDiscovery;
 
@@ -37,7 +38,7 @@ implementation {
             if(!call NeighborMap.contains(myMsg->src)) {
                 call DistanceVectorRouting.handleNeighborFound();
             }
-            call NeighborMap.insert(myMsg->src, call NeighborDiscoveryTimer.getNow());
+            call NeighborMap.insert(myMsg->src, ND_TTL);
         }
     }
 
@@ -48,10 +49,15 @@ implementation {
         call NeighborDiscovery.printNeighbors();
         // Remove old neighbors
         for(; i < call NeighborMap.size(); i++) {
-            if(keys[i] != 0 && (call NeighborDiscoveryTimer.getNow()-call NeighborMap.get(keys[i])) > 40000) {
+            if(keys[i] == 0) {
+                continue;
+            }
+            if(call NeighborMap.get(keys[i]) == 0) {
                 dbg(NEIGHBOR_CHANNEL, "Removing Neighbor %d\n", keys[i]);
                 call DistanceVectorRouting.handleNeighborLost(keys[i]);
                 call NeighborMap.remove(keys[i]);
+            } else {
+                call NeighborMap.insert(keys[i], call NeighborMap.get(keys[i])-1);
             }
         }
         // Send out a new neighbor discovery ping

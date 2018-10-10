@@ -76,6 +76,10 @@ implementation {
 
     event void CommandHandler.printDistanceVector() {}
 
+    event void CommandHandler.printMessage(uint8_t *payload) {
+        dbg(GENERAL_CHANNEL, "%s\n", payload);
+    }
+
     event void CommandHandler.setTestServer() {}
 
     event void CommandHandler.setTestClient() {}
