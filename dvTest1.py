@@ -8,7 +8,7 @@ def main():
     s.runTime(1);
 
     # Load the the layout of the network.
-    s.loadTopo("dv_test.topo");
+    s.loadTopo("dv_test1.topo");
 
     # Add a noise model to all of the motes.
     s.loadNoise("no_noise.txt");
@@ -59,7 +59,7 @@ def main():
     s.routeDMP(4)
     s.runTime(20)
 
-    s.routeDMP(4)
+    s.routeDMP(5)
     s.runTime(20)
 
 if __name__ == '__main__':

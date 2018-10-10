@@ -2,12 +2,13 @@
 #include "../../includes/channels.h"
 #include "../../includes/packet.h"
 #include "../../includes/protocol.h"
+#include "../../includes/dv_strategy.h"
 
 #define MAX_ROUTES  22
 #define MAX_COST    17
 #define DV_TTL       4
-//#define STRATEGY    "SPLIT_HORIZON"
-#define STRATEGY    "POISON_REVERSE"
+//#define STRATEGY    STRATEGY_SPLIT_HORIZON
+#define STRATEGY    STRATEGY_POISON_REVERSE
 
 module DistanceVectorRoutingP {
     provides interface DistanceVectorRouting;
@@ -43,7 +44,7 @@ implementation {
     command error_t DistanceVectorRouting.start() {
         initilizeRoutingTable();
         call DVRTimer.startOneShot(40000);
-        dbg(ROUTING_CHANNEL, "Distance Vector Routing Started!\n");
+        dbg(ROUTING_CHANNEL, "Distance Vector Routing Started on node %u!\n", TOS_NODE_ID);
     }
 
     event void DVRTimer.fired() {
@@ -87,53 +88,52 @@ implementation {
     // Update the routing table if needed
     command void DistanceVectorRouting.handleDV(pack* myMsg) {
         uint16_t i, j;
-        bool routePresent = FALSE, routesAdded = FALSE;        
+        bool routePresent = FALSE, routesAdded = FALSE;
         Route* receivedRoutes = (Route*) myMsg->payload;
+        // For each of up to 5 routes -> process the routes
         for(i = 0; i < 5; i++) {
-            if(receivedRoutes->dest == 0) {
-                break;
-            }
+            // Reached the last route -> stop
+            if(receivedRoutes[i].dest == 0) { break; }
             for(j = 0; j < numRoutes; j++) {
-                if(receivedRoutes->dest == routingTable[j].dest) {
-                    // If route's next hop is myMsg->dest -> update
-                    // If route costs less -> update
-                    if(routingTable[j].nextHop == 0) {
-                        // Split Horizon
-                    } else if(routingTable[j].nextHop == myMsg->src) {
-                        // Sender is source of table entry -> update table entry.
-                        routingTable[j].cost = (receivedRoutes->cost+1 < MAX_COST) ? receivedRoutes->cost+1 : MAX_COST;
-                        //dbg(ROUTING_CHANNEL, "Update to route: %d from neighbor: %d with new cost %d\n", routingTable[i].dest, routingTable[i].nextHop, routingTable[i].cost);
-                    } else if(receivedRoutes->cost + 1 < MAX_COST && receivedRoutes->cost + 1 < routingTable[j].cost) {
-                        // More optimal route found
-                        routingTable[j].nextHop = myMsg->src;
-                        routingTable[j].cost = receivedRoutes->cost + 1;
-                        dbg(ROUTING_CHANNEL, "More optimal route found to dest: %d through %d at cost %d\n", receivedRoutes->dest, receivedRoutes->nextHop, receivedRoutes->cost +1);
+                if(receivedRoutes[i].dest == routingTable[j].dest) {
+                    // If Split Horizon packet -> do nothing
+                    // If sender is the source of table entry -> update
+                    // If more optimal route found -> update
+                    if(receivedRoutes[i].nextHop != 0) {
+                        if(routingTable[j].nextHop == myMsg->src) {
+                            routingTable[j].cost = (receivedRoutes[i].cost + 1 < MAX_COST) ? receivedRoutes[i].cost + 1 : MAX_COST;
+                            //dbg(ROUTING_CHANNEL, "Update to route: %d from neighbor: %d with new cost %d\n", routingTable[i].dest, routingTable[i].nextHop, routingTable[i].cost);
+                        } else if(receivedRoutes[i].cost + 1 < MAX_COST && receivedRoutes[i].cost + 1 < routingTable[j].cost) {
+                            routingTable[j].nextHop = myMsg->src;
+                            routingTable[j].cost = receivedRoutes[i].cost + 1;
+                            //dbg(ROUTING_CHANNEL, "More optimal route found to dest: %d through %d at cost %d\n", receivedRoutes[i].dest, receivedRoutes[i].nextHop, receivedRoutes[i].cost +1);
+                        }
                     }
+                    // If route cost not infinite -> update the TTL
                     if(routingTable[j].cost != MAX_COST)
-                        routingTable[j].ttl = DV_TTL;                    
+                        routingTable[j].ttl = DV_TTL;
                     routePresent = TRUE;
                     break;
                 }
             }
-            // If route not in table and there is space -> add it
-            if(!routePresent && numRoutes != MAX_ROUTES && receivedRoutes->nextHop != 0) {
-                addRoute(receivedRoutes->dest, myMsg->src, receivedRoutes->cost+1, DV_TTL);
+            // If route not in table AND there is space AND it is not a split horizon packet AND the route cost is not infinite -> add it
+            if(!routePresent && numRoutes != MAX_ROUTES && receivedRoutes[i].nextHop != 0 && receivedRoutes[i].cost != MAX_COST) {
+                addRoute(receivedRoutes[i].dest, myMsg->src, receivedRoutes[i].cost + 1, DV_TTL);
                 routesAdded = TRUE;
             }
             routePresent = FALSE;
-            receivedRoutes++;
         }
         if(routesAdded) {
             triggerUpdate();
         }
     }
 
-    command void DistanceVectorRouting.handleNeighborChange(uint16_t lostNeighbor) {
-        // Neighbor change detected, update routing table and trigger DV update
-        uint16_t i, j;
+    command void DistanceVectorRouting.handleNeighborLost(uint16_t lostNeighbor) {
+        // Neighbor lost, update routing table and trigger DV update
+        uint16_t i;
         if(lostNeighbor == 0)
             return;
-        dbg(ROUTING_CHANNEL, "Neighbor discovery has lost neighbor %u. Distance is now infinite...\n", lostNeighbor);
+        dbg(ROUTING_CHANNEL, "Neighbor discovery has lost neighbor %u. Distance is now infinite!\n", lostNeighbor);
         for(i = 1; i < numRoutes; i++) {
             if(routingTable[i].dest == lostNeighbor || routingTable[i].nextHop == lostNeighbor) {
                 routingTable[i].cost = MAX_COST;
@@ -141,6 +141,12 @@ implementation {
         }
         triggerUpdate();
     }
+
+    command void DistanceVectorRouting.handleNeighborFound() {
+        // Neighbor found, update routing table and trigger DV update
+        inputNeighbors();
+    }
+
 
     command void DistanceVectorRouting.printRouteTable() {
         uint8_t i;
@@ -227,16 +233,23 @@ implementation {
             }
             // If neighbor not already in the list and there is room -> add new neighbor
             if(!routeFound && numRoutes != MAX_ROUTES) {
-                addRoute(neighbors[i], neighbors[i], 1, DV_TTL);
-                triggerUpdate();                
+                addRoute(neighbors[i], neighbors[i], 1, DV_TTL);                
                 newNeighborfound = TRUE;
             } else if(numRoutes == MAX_ROUTES) {
                 dbg(ROUTING_CHANNEL, "Routing table full. Cannot add entry for node: %u\n", neighbors[i]);
             }
             routeFound = FALSE;
         }
+        if(newNeighborfound) {
+            triggerUpdate();
+        }
     }
 
+    // Skip the route for split horizon
+    // Alter route table for poison reverse, keeping values in temp vars
+    // Copy route onto array
+    // Restore original route
+    // Send packet with copy of partial routing table
     void triggerUpdate() {
         // Send routes to all neighbors one at a time. Use split horizon, poison reverse
         uint32_t* neighbors = call NeighborDiscovery.getNeighbors();
@@ -244,31 +257,25 @@ implementation {
         uint8_t i = 0, j = 0, counter = 0;
         uint8_t temp;
         Route packetRoutes[5];
-        bool isSplitHorizon = FALSE, isPoisonReverse = FALSE, isSwapped = FALSE;
+        bool isSwapped = FALSE;
+        // Zero out the array
         for(i = 0; i < 5; i++) {
                 packetRoutes[i].dest = 0;
                 packetRoutes[i].nextHop = 0;
                 packetRoutes[i].cost = 0;
                 packetRoutes[i].ttl = 0;
         }
-        if(strcmp(STRATEGY, "SPLIT_HORIZON") == 0) {
-            isSplitHorizon = TRUE;
-        } else if(strcmp(STRATEGY, "POISON_REVERSE") == 0) {
-            isPoisonReverse = TRUE;
-        }
-        // Alter route table for split horizon or poison reverse, keeping values in temp vars
-        // Send packet with copy of routing table
-        // Restore original route
+        // Send to every neighbor
         for(i = 0; i < neighborsListSize; i++) {
             while(j < numRoutes) {
                 // Split Horizon/Poison Reverse
-                if(neighbors[i] == routingTable[j].nextHop && isSplitHorizon) {
+                if(neighbors[i] == routingTable[j].nextHop && STRATEGY == STRATEGY_SPLIT_HORIZON) {
                     /*j++;
                     continue;*/
                     temp = routingTable[j].nextHop;
                     routingTable[j].nextHop = 0;
                     isSwapped = TRUE;
-                } else if(neighbors[i] == routingTable[j].nextHop && isPoisonReverse) {
+                } else if(neighbors[i] == routingTable[j].nextHop && STRATEGY == STRATEGY_POISON_REVERSE) {
                     temp = routingTable[j].cost;
                     routingTable[j].cost = MAX_COST;
                     isSwapped = TRUE;
@@ -277,9 +284,8 @@ implementation {
                 packetRoutes[counter].dest = routingTable[j].dest;
                 packetRoutes[counter].nextHop = routingTable[j].nextHop;
                 packetRoutes[counter].cost = routingTable[j].cost;
-                packetRoutes[counter].ttl = 0;
                 counter++;
-                // If our array is full or we have added all routes => send out packet with routes
+                // If our array is full or we have added all routes -> send out packet with routes
                 if(counter == 5 || j == numRoutes-1) {
                     // Send out packet
                     makePack(&routePack, TOS_NODE_ID, neighbors[i], 1, PROTOCOL_DV, 0, &packetRoutes, sizeof(packetRoutes));
@@ -290,12 +296,12 @@ implementation {
                         packetRoutes[counter].dest = 0;
                         packetRoutes[counter].nextHop = 0;
                         packetRoutes[counter].cost = 0;
-                        packetRoutes[counter].ttl = 0;
                     }
                 }
-                if(isSwapped && isSplitHorizon) {
+                // Restore the table
+                if(isSwapped && STRATEGY == STRATEGY_SPLIT_HORIZON) {
                     routingTable[j].nextHop = temp;
-                }else if(isSwapped && isPoisonReverse) {
+                } else if(isSwapped && STRATEGY == STRATEGY_POISON_REVERSE) {
                     routingTable[j].cost = temp;
                 }
                 isSwapped = FALSE;

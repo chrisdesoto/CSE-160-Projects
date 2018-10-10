@@ -21,7 +21,7 @@ implementation {
 
     command error_t NeighborDiscovery.start() {
         call NeighborDiscoveryTimer.startPeriodic(10000 + (uint16_t) (call Random.rand16()%1000));
-        dbg(NEIGHBOR_CHANNEL, "Neighbor Discovery Started!\n");
+        dbg(NEIGHBOR_CHANNEL, "Neighbor Discovery Started on node %u!\n", TOS_NODE_ID);
     }
 
     command void NeighborDiscovery.handleNeighbor(pack* myMsg) {
@@ -33,11 +33,11 @@ implementation {
             call Sender.send(*myMsg, AM_BROADCAST_ADDR);
             dbg(NEIGHBOR_CHANNEL, "Neighbor Discovery PING!\n");
         } else if(myMsg->protocol == PROTOCOL_PINGREPLY && myMsg->dest == 0) {
-            if(call NeighborMap.contains(myMsg->src)) {
-                // New neighbor found
+            dbg(NEIGHBOR_CHANNEL, "Neighbor Discovery PINGREPLY! Found Neighbor %d\n", myMsg->src);
+            if(!call NeighborMap.contains(myMsg->src)) {
+                call DistanceVectorRouting.handleNeighborFound();
             }
             call NeighborMap.insert(myMsg->src, call NeighborDiscoveryTimer.getNow());
-            dbg(NEIGHBOR_CHANNEL, "Neighbor Discovery PINGREPLY! Found Neighbor %d\n", myMsg->src);
         }
     }
 
@@ -50,7 +50,7 @@ implementation {
         for(; i < call NeighborMap.size(); i++) {
             if(keys[i] != 0 && (call NeighborDiscoveryTimer.getNow()-call NeighborMap.get(keys[i])) > 40000) {
                 dbg(NEIGHBOR_CHANNEL, "Removing Neighbor %d\n", keys[i]);
-                call DistanceVectorRouting.handleNeighborChange(keys[i]);
+                call DistanceVectorRouting.handleNeighborLost(keys[i]);
                 call NeighborMap.remove(keys[i]);
             }
         }
