@@ -36,9 +36,11 @@ implementation {
         } else if(myMsg->protocol == PROTOCOL_PINGREPLY && myMsg->dest == 0) {
             dbg(NEIGHBOR_CHANNEL, "Neighbor Discovery PINGREPLY! Found Neighbor %d\n", myMsg->src);
             if(!call NeighborMap.contains(myMsg->src)) {
+                call NeighborMap.insert(myMsg->src, ND_TTL);
                 call DistanceVectorRouting.handleNeighborFound();
+            } else {
+                call NeighborMap.insert(myMsg->src, ND_TTL);
             }
-            call NeighborMap.insert(myMsg->src, ND_TTL);
         }
     }
 

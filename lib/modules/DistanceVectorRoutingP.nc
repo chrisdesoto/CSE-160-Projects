@@ -61,7 +61,7 @@ implementation {
     }
 
     command void DistanceVectorRouting.ping(uint16_t destination, uint8_t *payload) {
-        makePack(&routePack, TOS_NODE_ID, destination, MAX_TTL, PROTOCOL_PING, 0, payload, PACKET_MAX_PAYLOAD_SIZE);
+        makePack(&routePack, TOS_NODE_ID, destination, 0, PROTOCOL_PING, 0, payload, PACKET_MAX_PAYLOAD_SIZE);
         dbg(ROUTING_CHANNEL, "PING FROM %d TO %d\n", TOS_NODE_ID, destination);
         logPack(&routePack);
         call DistanceVectorRouting.routePacket(&routePack);
@@ -69,8 +69,13 @@ implementation {
 
     command void DistanceVectorRouting.routePacket(pack* myMsg) {
         uint8_t nextHop;
-        if(myMsg->dest == TOS_NODE_ID) {
-            dbg(ROUTING_CHANNEL, "Packet has reached destination %d!!!\n", TOS_NODE_ID);
+        if(myMsg->dest == TOS_NODE_ID && myMsg->protocol == PROTOCOL_PING) {
+            dbg(ROUTING_CHANNEL, "PING Packet has reached destination %d!!!\n", TOS_NODE_ID);
+            makePack(&routePack, myMsg->dest, myMsg->src, 0, PROTOCOL_PINGREPLY, 0,(uint8_t *) myMsg->payload, PACKET_MAX_PAYLOAD_SIZE);
+            call DistanceVectorRouting.routePacket(&routePack);
+            return;
+        } else if(myMsg->dest == TOS_NODE_ID && myMsg->protocol == PROTOCOL_PINGREPLY) {
+            dbg(ROUTING_CHANNEL, "PING_REPLY Packet has reached destination %d!!!\n", TOS_NODE_ID);
             return;
         }
         if(nextHop = findNextHop(myMsg->dest)) {
@@ -92,6 +97,7 @@ implementation {
         for(i = 0; i < 5; i++) {
             // Reached the last route -> stop
             if(receivedRoutes[i].dest == 0) { break; }
+            // Process the route
             for(j = 0; j < numRoutes; j++) {
                 if(receivedRoutes[i].dest == routingTable[j].dest) {
                     // If Split Horizon packet -> do nothing
