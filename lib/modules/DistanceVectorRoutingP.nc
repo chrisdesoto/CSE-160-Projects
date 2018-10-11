@@ -7,8 +7,8 @@
 #define MAX_ROUTES  22
 #define MAX_COST    17
 #define DV_TTL       4
-#define STRATEGY    STRATEGY_SPLIT_HORIZON
-//#define STRATEGY    STRATEGY_POISON_REVERSE
+//#define STRATEGY    STRATEGY_SPLIT_HORIZON
+#define STRATEGY    STRATEGY_POISON_REVERSE
 
 module DistanceVectorRoutingP {
     provides interface DistanceVectorRouting;
@@ -38,7 +38,7 @@ implementation {
     void addRoute(uint8_t dest, uint8_t nextHop, uint8_t cost, uint8_t ttl);
     void removeRoute(uint8_t idx);
     void decrementTTLs();
-    void inputNeighbors();
+    bool inputNeighbors();
     void triggerUpdate();
     
     command error_t DistanceVectorRouting.start() {
@@ -49,15 +49,14 @@ implementation {
 
     event void DVRTimer.fired() {
         if(call DVRTimer.isOneShot()) {
-            // Load initial neighbors into routing table
             call DVRTimer.startPeriodic(30000 + (uint16_t) (call Random.rand16()%5000));
         } else {
             // Decrement TTLs
             decrementTTLs();
             // Input neighbors into the routing table, if not there
-            inputNeighbors();
-            // Send out routing table
-            triggerUpdate();
+            if(!inputNeighbors())
+                // Send out routing table
+                triggerUpdate();
         }
     }
 
@@ -74,14 +73,13 @@ implementation {
             dbg(ROUTING_CHANNEL, "Packet has reached destination %d!!!\n", TOS_NODE_ID);
             return;
         }
-        nextHop = findNextHop(myMsg->dest);
-        if(nextHop == 0) {
-            dbg(ROUTING_CHANNEL, "No route to destination. Dropping packet...\n");
-            logPack(myMsg);
-        } else {
+        if(nextHop = findNextHop(myMsg->dest)) {
             dbg(ROUTING_CHANNEL, "Node %d routing packet through %d\n", TOS_NODE_ID, nextHop);
             logPack(myMsg);
             call Sender.send(*myMsg, nextHop);
+        } else {
+            dbg(ROUTING_CHANNEL, "No route to destination. Dropping packet...\n");
+            logPack(myMsg);
         }
     }
 
@@ -102,16 +100,19 @@ implementation {
                     if(receivedRoutes[i].nextHop != 0) {
                         if(routingTable[j].nextHop == myMsg->src) {
                             routingTable[j].cost = (receivedRoutes[i].cost + 1 < MAX_COST) ? receivedRoutes[i].cost + 1 : MAX_COST;
+                            routingTable[j].ttl = DV_TTL;
                             //dbg(ROUTING_CHANNEL, "Update to route: %d from neighbor: %d with new cost %d\n", routingTable[i].dest, routingTable[i].nextHop, routingTable[i].cost);
                         } else if(receivedRoutes[i].cost + 1 < MAX_COST && receivedRoutes[i].cost + 1 < routingTable[j].cost) {
                             routingTable[j].nextHop = myMsg->src;
                             routingTable[j].cost = receivedRoutes[i].cost + 1;
+                            routingTable[j].ttl = DV_TTL;
                             //dbg(ROUTING_CHANNEL, "More optimal route found to dest: %d through %d at cost %d\n", receivedRoutes[i].dest, receivedRoutes[i].nextHop, receivedRoutes[i].cost +1);
                         }
                     }
-                    // If route cost not infinite -> update the TTL
-                    if(routingTable[j].cost != MAX_COST)
+                    // If route is already present AND not unreachable -> update the TTL
+                    if(routingTable[j].nextHop == receivedRoutes[i].nextHop && routingTable[j].cost == receivedRoutes[i].cost && routingTable[j].cost != MAX_COST) {
                         routingTable[j].ttl = DV_TTL;
+                    }
                     routePresent = TRUE;
                     break;
                 }
@@ -215,7 +216,7 @@ implementation {
         }
     }
 
-    void inputNeighbors() {
+    bool inputNeighbors() {
         uint32_t* neighbors = call NeighborDiscovery.getNeighbors();
         uint16_t neighborsListSize = call NeighborDiscovery.getNeighborListSize();
         uint8_t i, j;
@@ -242,7 +243,9 @@ implementation {
         }
         if(newNeighborfound) {
             triggerUpdate();
+            return TRUE;        
         }
+        return FALSE;
     }
 
     // Skip the route for split horizon

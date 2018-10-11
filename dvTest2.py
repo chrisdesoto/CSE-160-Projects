@@ -12,7 +12,7 @@ def main():
     s.loadTopo("dv_test2.topo")
 
     # Add a noise model to all of the motes.
-    s.loadNoise("some_noise.txt")
+    s.loadNoise("no_noise.txt")
 
     # Turn on all of the sensors.
     s.bootAll()
