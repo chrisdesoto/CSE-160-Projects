@@ -7,8 +7,8 @@
 #define MAX_ROUTES  22
 #define MAX_COST    17
 #define DV_TTL       4
-//#define STRATEGY    STRATEGY_SPLIT_HORIZON
-#define STRATEGY    STRATEGY_POISON_REVERSE
+#define STRATEGY    STRATEGY_SPLIT_HORIZON
+//#define STRATEGY    STRATEGY_POISON_REVERSE
 
 module DistanceVectorRoutingP {
     provides interface DistanceVectorRouting;
