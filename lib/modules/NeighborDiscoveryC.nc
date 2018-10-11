@@ -10,6 +10,7 @@
 #include <Timer.h>
 #include "../../includes/CommandMsg.h"
 #include "../../includes/packet.h"
+#include "../../includes/neighbor.h"
 
 configuration NeighborDiscoveryC {
     provides interface NeighborDiscovery;
@@ -28,7 +29,7 @@ implementation {
     components RandomC as Random;
     NeighborDiscoveryP.Random -> Random;
 
-    components new HashmapC(uint32_t, 20);
+    components new HashmapC(Neighbor, 20);
     NeighborDiscoveryP.NeighborMap -> HashmapC;
 
     components DistanceVectorRoutingC;

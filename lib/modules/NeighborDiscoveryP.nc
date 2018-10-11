@@ -3,8 +3,11 @@
 #include "../../includes/packet.h"
 #include "../../includes/protocol.h"
 #include "../../includes/channels.h"
+#include "../../includes/neighbor.h"
 
-#define ND_TTL  5
+#define ND_TTL       5
+#define ND_S     10000
+#define ND_ALPHA    10
 
 module NeighborDiscoveryP {
     provides interface NeighborDiscovery;
@@ -12,13 +15,15 @@ module NeighborDiscoveryP {
     uses interface Timer<TMilli> as NeighborDiscoveryTimer;
     uses interface Random as Random;
     uses interface SimpleSend as Sender;
-    uses interface Hashmap<uint32_t> as NeighborMap;
+    uses interface Hashmap<Neighbor> as NeighborMap;
     uses interface DistanceVectorRouting as DistanceVectorRouting;
 }
 
 implementation {
     pack sendPackage;
+    Neighbor neighbor;
     void makePack(pack *Package, uint16_t src, uint16_t dest, uint16_t TTL, uint16_t Protocol, uint16_t seq, uint8_t *payload, uint8_t length);
+    void computeEWMA(Neighbor* n, uint16_t Sn);
 
     command error_t NeighborDiscovery.start() {
         call NeighborDiscoveryTimer.startPeriodic(10000 + (uint16_t) (call Random.rand16()%1000));
@@ -27,6 +32,7 @@ implementation {
 
     command void NeighborDiscovery.handleNeighbor(pack* myMsg) {
         // Neighbor Discovery packet received
+        Neighbor *n;
         if(myMsg->protocol == PROTOCOL_PING && myMsg->TTL > 0) {
             myMsg->TTL -= 1;
             myMsg->src = TOS_NODE_ID;
@@ -36,8 +42,18 @@ implementation {
         } else if(myMsg->protocol == PROTOCOL_PINGREPLY && myMsg->dest == 0) {
             dbg(NEIGHBOR_CHANNEL, "Neighbor Discovery PINGREPLY! Found Neighbor %d\n", myMsg->src);
             if(!call NeighborMap.contains(myMsg->src)) {
+                neighbor.TTL = ND_TTL;
+                neighbor.Sn = 0;
+                neighbor.EWMA = ND_S;
+                NeighborMap.insert(myMsg->src, neighbor);
                 call DistanceVectorRouting.handleNeighborFound();
+            } else {
+                n = &(call NeighborMap.get(myMsg->src));
+                neighbor.TTL = ND_TTL;
+                neighbor.Sn = 0;
             }
+
+            
             call NeighborMap.insert(myMsg->src, ND_TTL);
         }
     }
@@ -83,6 +99,10 @@ implementation {
 
     command uint16_t NeighborDiscovery.getNeighborListSize() {
         return call NeighborMap.size();
+    }
+
+    void computeEWMA(Neighbor* n, uint16_t Sn) {
+        n->EWMA = (Sn / ND_ALPHA) + ((n->EWMA * (ND_ALPHA - 1)) / ND_ALPHA);
     }
 
     void makePack(pack *Package, uint16_t src, uint16_t dest, uint16_t TTL, uint16_t protocol, uint16_t seq, uint8_t* payload, uint8_t length) {

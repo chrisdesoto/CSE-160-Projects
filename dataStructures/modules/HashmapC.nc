@@ -60,7 +60,7 @@ implementation{
             }
 
             // Assign key and input.
-            map[j].value=input;
+            memcpy(&map[j].value, &t, sizeof(t));
             map[j].key = k;
             return;
          }
@@ -132,7 +132,7 @@ implementation{
       do{
          j=hash(k, i);
          if(map[j].key == k)
-            return map[j].value;
+            return &map[j].value;
          i++;
       }while(i<HASH_MAX_SIZE);
 
