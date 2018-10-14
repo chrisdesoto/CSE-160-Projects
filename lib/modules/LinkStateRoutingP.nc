@@ -29,6 +29,7 @@ implementation {
     } LSP;
 
     uint8_t neighborState[LS_MAX_ROUTES][LS_MAX_ROUTES];
+    uint16_t numKnownNodes = 0;
     uint16_t numRoutes = 0;
     Route routingTable[LS_MAX_ROUTES];
     uint16_t sequenceNum = 0;
@@ -37,6 +38,7 @@ implementation {
     void makePack(pack *Package, uint16_t src, uint16_t dest, uint16_t TTL, uint16_t protocol, uint16_t seq, void* payload, uint8_t length);
     void initilizeRoutingTable();
     bool updateState(pack* myMsg);
+    bool updateRoute(uint8_t dest, uint8_t nextHop, uint8_t cost);
     void sendLSP();
     void handleForward(pack* myMsg);
     void djikstra();
@@ -136,6 +138,8 @@ implementation {
         routingTable[TOS_NODE_ID].nextHop = TOS_NODE_ID;
         routingTable[TOS_NODE_ID].cost = 0;
         neighborState[TOS_NODE_ID][TOS_NODE_ID] = 0;
+        numKnownNodes++;
+        numRoutes++;
     }
 
     bool updateState(pack* myMsg) {
@@ -144,6 +148,11 @@ implementation {
         bool isStateUpdated = FALSE;
         for(i = 0; i < 10; i++) {
             if(neighborState[myMsg->src][lsp[i].neighbor] != lsp[i].cost) {
+                if(neighborState[myMsg->src][lsp[i].neighbor] == LS_MAX_COST) {
+                    numKnownNodes++;
+                } else if(lsp[i].cost == LS_MAX_COST) {
+                    numKnownNodes--;
+                }
                 neighborState[myMsg->src][lsp[i].neighbor] = lsp[i].cost;
                 isStateUpdated = TRUE;
             }
@@ -181,7 +190,38 @@ implementation {
     }
 
     void djikstra() {
-        
+        uint8_t i = 0, j = 0, k = 0;
+        uint8_t currentNode = TOS_NODE_ID, minCost = LS_MAX_COST, nextNode = 0;
+        uint8_t prev[LS_MAX_ROUTES];
+        uint8_t cost[LS_MAX_ROUTES];
+        bool visited[LS_MAX_ROUTES];
+        uint8_t count = numKnownNodes;
+        for(i = 0; i < LS_MAX_ROUTES; i++) {
+            cost[i] = LS_MAX_COST;
+        }
+        for(i = 0; i < LS_MAX_ROUTES; i++) {
+            visited[i] = FALSE;
+        }
+        cost[currentNode] = 0;
+        while(TRUE) {
+            for(i = 1; i < LS_MAX_ROUTES; i++) {
+                if(i != currentNode && neighborState[TOS_NODE_ID][i] < LS_MAX_COST && cost[currentNode] + neighborState[TOS_NODE_ID][i] < cost[i]) {
+                    cost[i] = cost[currentNode] + neighborState[TOS_NODE_ID][i];
+                    prev[i] = currentNode;
+                    if(cost[i] < minCost && !visited[i]) {
+                        minCost = cost[i];
+                        nextNode = i;
+                    }
+                }                
+            }
+            visited[currentNode] = TRUE;
+            currentNode = nextNode;
+            if(--count == 0) {
+                break;
+            }
+        }
+        // NEED: add route to table
+
     }
 
     void makePack(pack *Package, uint16_t src, uint16_t dest, uint16_t TTL, uint16_t protocol, uint16_t seq, void* payload, uint8_t length) {
