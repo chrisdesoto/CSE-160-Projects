@@ -22,6 +22,7 @@ module Node {
     uses interface Flooding;
     uses interface NeighborDiscovery as NeighborDiscovery;
     uses interface DistanceVectorRouting as DistanceVectorRouting;
+    uses interface LinkStateRouting as LinkStateRouting;
 }
 
 implementation {
@@ -48,10 +49,12 @@ implementation {
         pack* myMsg = (pack*) payload;
         if(len!=sizeof(pack)) {
                 dbg(GENERAL_CHANNEL, "Unknown Packet Type %d\n", len);
-        } else if(myMsg->dest == 0) {
-            call NeighborDiscovery.handleNeighbor(myMsg);
+        } else if(myMsg->protocol == PROTOCOL_LS) {
+            call LinkStateRouting.handleLS(myMsg);
         } else if(myMsg->protocol == PROTOCOL_DV) {
             call DistanceVectorRouting.handleDV(myMsg);
+        } else if(myMsg->dest == 0) {
+            call NeighborDiscovery.handleNeighbor(myMsg);
         } else {
             call DistanceVectorRouting.routePacket(myMsg);
             //call Flooding.handleFlooding(myMsg);

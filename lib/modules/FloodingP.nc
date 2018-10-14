@@ -4,7 +4,6 @@
 #include "../../includes/channels.h"
 #include "../../includes/packet.h"
 #include "../../includes/protocol.h"
-#include "../../includes/channels.h"
 module FloodingP {
     provides interface Flooding;
     
@@ -30,7 +29,7 @@ implementation {
     }
 
     command void Flooding.handleFlooding(pack* myMsg) {
-        if(call PacketsReceived.containsVal(myMsg->src, myMsg->seq)) {                
+        if(call PacketsReceived.containsVal(myMsg->src, myMsg->seq)) {
             dbg(FLOODING_CHANNEL, "Packet seen already. Dropping...\n");
         } else if(myMsg->TTL == 0) {
             dbg(FLOODING_CHANNEL, "TTL expired...\n");
@@ -39,6 +38,11 @@ implementation {
         } else {
             handleForward(myMsg);
         }
+    }
+
+    command void Flooding.floodLSP(pack* myMsg) {
+        myMsg->seq = sequenceNum++;
+        call Sender.send(sendPackage, AM_BROADCAST_ADDR);
     }
 
     void handlePayloadReceived(pack *myMsg) {

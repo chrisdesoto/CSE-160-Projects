@@ -36,4 +36,7 @@ implementation {
 
     components DistanceVectorRoutingC;
     Node.DistanceVectorRouting -> DistanceVectorRoutingC;
+
+    components LinkStateRoutingC;
+    Node.LinkStateRouting -> LinkStateRoutingC;
 }
