@@ -31,7 +31,8 @@ implementation {
         call AMControl.start();
         dbg(GENERAL_CHANNEL, "Booted\n");
         call NeighborDiscovery.start();
-        call DistanceVectorRouting.start();
+        //call DistanceVectorRouting.start();
+        call LinkStateRouting.start();
     }
 
     event void AMControl.startDone(error_t err) {
@@ -56,14 +57,16 @@ implementation {
         } else if(myMsg->dest == 0) {
             call NeighborDiscovery.handleNeighbor(myMsg);
         } else {
-            call DistanceVectorRouting.routePacket(myMsg);
+            call LinkStateRouting.routePacket(myMsg);
+            //call DistanceVectorRouting.routePacket(myMsg);
             //call Flooding.handleFlooding(myMsg);
         }
         return msg;
     }
 
     event void CommandHandler.ping(uint16_t destination, uint8_t *payload) {
-        call DistanceVectorRouting.ping(destination, payload);
+        call LinkStateRouting.ping(destination, payload);
+        //call DistanceVectorRouting.ping(destination, payload);
         //call Flooding.ping(destination, payload);
     }
 
@@ -72,7 +75,8 @@ implementation {
     }
 
     event void CommandHandler.printRouteTable() {
-        call DistanceVectorRouting.printRouteTable();
+        call LinkStateRouting.printRouteTable();
+        //call DistanceVectorRouting.printRouteTable();
     }
 
     event void CommandHandler.printLinkState() {}
