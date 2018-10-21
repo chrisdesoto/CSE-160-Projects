@@ -33,4 +33,7 @@ implementation {
 
     components DistanceVectorRoutingC;
     NeighborDiscoveryP.DistanceVectorRouting -> DistanceVectorRoutingC;
+
+    components LinkStateRoutingC;
+    NeighborDiscoveryP.LinkStateRouting -> LinkStateRoutingC;
 }

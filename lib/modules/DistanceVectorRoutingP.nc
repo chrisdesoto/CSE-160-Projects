@@ -78,7 +78,7 @@ implementation {
             dbg(ROUTING_CHANNEL, "PING_REPLY Packet has reached destination %d!!!\n", TOS_NODE_ID);
             return;
         }
-        if(nextHop = findNextHop(myMsg->dest)) {
+        if((nextHop = findNextHop(myMsg->dest))) {
             dbg(ROUTING_CHANNEL, "Node %d routing packet through %d\n", TOS_NODE_ID, nextHop);
             logPack(myMsg);
             call Sender.send(*myMsg, nextHop);
