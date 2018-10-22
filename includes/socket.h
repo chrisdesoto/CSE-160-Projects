@@ -24,7 +24,7 @@ typedef uint8_t socket_port_t;
 typedef nx_struct socket_addr_t{
     nx_socket_port_t port;
     nx_uint16_t addr;
-}socket_addr_t;
+} socket_addr_t;
 
 
 // File descripter id. Each id is associated with a socket_store_t
@@ -32,7 +32,7 @@ typedef uint8_t socket_t;
 
 // State of a socket. 
 typedef struct socket_store_t{
-    uint8_t flag;
+    uint8_t flags;
     enum socket_state state;
     socket_port_t src;
     socket_addr_t dest;
@@ -50,6 +50,7 @@ typedef struct socket_store_t{
     uint8_t nextExpected;
 
     uint16_t RTT;
+    uint8_t advertisedWindow;
     uint8_t effectiveWindow;
 }socket_store_t;
 
