@@ -70,17 +70,17 @@ implementation{
 
             case CMD_TEST_CLIENT:
                 dbg(COMMAND_CHANNEL, "Command Type: Client\n");
-                signal CommandHandler.setTestClient();
+                signal CommandHandler.setTestClient(buff[0], buff[1], buff[2], &buff[3]);
+                break;
+
+            case CMD_TEST_SERVER:
+                dbg(COMMAND_CHANNEL, "Command Type: Client\n");
+                signal CommandHandler.setTestServer(buff[0], buff[1]);
                 break;
 
             case CMD_PRINT_MESSAGE:
                 dbg(COMMAND_CHANNEL, "Command Type: Print Message\n");
                 signal CommandHandler.printMessage(&buff[0]);
-                break;
-
-            case CMD_TEST_SERVER:
-                dbg(COMMAND_CHANNEL, "Command Type: Client\n");
-                signal CommandHandler.setTestServer();
                 break;
 
             default:

@@ -26,7 +26,7 @@ def main():
     s.addChannel(s.ROUTING_CHANNEL)
 
     # After sending a ping, simulate a little to prevent collision.
-    s.runTime(50)
+#    s.runTime(40)
     #s.ping(2, 3, "Hello, World")
 
     s.routeDMP(1)

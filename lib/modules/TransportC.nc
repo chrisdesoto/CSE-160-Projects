@@ -8,7 +8,7 @@
 
 #include <Timer.h>
 #include "../../includes/CommandMsg.h"
-#include "../../includes/packet.h"
+#include "../includes/packet.h"
 
 configuration TransportC {
     provides interface Transport;
@@ -24,8 +24,11 @@ implementation {
     components NeighborDiscoveryC;
     TransportP.NeighborDiscovery -> NeighborDiscoveryC;
 
-    components new TimerMilliC() as TCPTimer;
-    TransportP.TCPTimer -> TCPTimer;
+    components DistanceVectorRoutingC;
+    TransportP.DistanceVectorRouting -> DistanceVectorRoutingC;
+
+    components new TimerMilliC() as RetransmissionTimer;
+    TransportP.RetransmissionTimer -> RetransmissionTimer;
 
     components RandomC as Random;
     TransportP.Random -> Random;

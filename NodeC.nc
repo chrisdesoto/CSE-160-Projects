@@ -39,4 +39,7 @@ implementation {
 
     components LinkStateRoutingC;
     Node.LinkStateRouting -> LinkStateRoutingC;
+
+    components TransportC;
+    Node.Transport -> TransportC;
 }

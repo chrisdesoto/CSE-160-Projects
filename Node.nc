@@ -18,6 +18,7 @@ module Node {
     uses interface Boot;
     uses interface SplitControl as AMControl;
     uses interface Receive;
+    uses interface Transport;
     uses interface CommandHandler;
     uses interface Flooding;
     uses interface NeighborDiscovery as NeighborDiscovery;
@@ -31,8 +32,8 @@ implementation {
         call AMControl.start();
         dbg(GENERAL_CHANNEL, "Booted\n");
         call NeighborDiscovery.start();
-        //call DistanceVectorRouting.start();
-        call LinkStateRouting.start();
+        call DistanceVectorRouting.start();
+        //call LinkStateRouting.start();
     }
 
     event void AMControl.startDone(error_t err) {
@@ -57,29 +58,30 @@ implementation {
         } else if(myMsg->dest == 0) {
             call NeighborDiscovery.handleNeighbor(myMsg);
         } else {
-            call LinkStateRouting.routePacket(myMsg);
-            //call DistanceVectorRouting.routePacket(myMsg);
+            //call LinkStateRouting.routePacket(myMsg);
+            call DistanceVectorRouting.routePacket(myMsg);
             //call Flooding.handleFlooding(myMsg);
         }
         return msg;
     }
 
     event void CommandHandler.ping(uint16_t destination, uint8_t *payload) {
-        call LinkStateRouting.ping(destination, payload);
-        //call DistanceVectorRouting.ping(destination, payload);
+        //call LinkStateRouting.ping(destination, payload);
+        call DistanceVectorRouting.ping(destination, payload);
         //call Flooding.ping(destination, payload);
     }
 
     event void CommandHandler.printNeighbors() {
-            call NeighborDiscovery.printNeighbors();
+        call NeighborDiscovery.printNeighbors();
     }
 
     event void CommandHandler.printRouteTable() {
-        call LinkStateRouting.printRouteTable();
-        //call DistanceVectorRouting.printRouteTable();
+        call DistanceVectorRouting.printRouteTable();
     }
 
-    event void CommandHandler.printLinkState() {}
+    event void CommandHandler.printLinkState() {
+        call LinkStateRouting.printRouteTable();
+    }
 
     event void CommandHandler.printDistanceVector() {}
 
@@ -87,9 +89,13 @@ implementation {
         dbg(GENERAL_CHANNEL, "%s\n", payload);
     }
 
-    event void CommandHandler.setTestServer() {}
+    event void CommandHandler.setTestServer(uint16_t address, uint8_t port) {
+        //Transport.testServer();
+    }
 
-    event void CommandHandler.setTestClient() {}
+    event void CommandHandler.setTestClient(uint16_t destination, uint8_t srcPort, uint8_t destPort, uint8_t *payload) {
+
+    }
 
     event void CommandHandler.setAppServer() {}
 
