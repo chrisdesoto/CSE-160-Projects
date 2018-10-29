@@ -9,6 +9,7 @@
 #include <Timer.h>
 #include "../../includes/CommandMsg.h"
 #include "../includes/packet.h"
+#include "../includes/socket.h"
 
 configuration TransportC {
     provides interface Transport;
@@ -32,4 +33,7 @@ implementation {
 
     components RandomC as Random;
     TransportP.Random -> Random;
+
+    components new HashmapC(uint8_t, 20);
+    TransportP.SocketMap -> HashmapC;
 }

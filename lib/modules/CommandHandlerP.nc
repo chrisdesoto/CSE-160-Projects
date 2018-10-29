@@ -68,14 +68,19 @@ implementation{
                 signal CommandHandler.printRouteTable();
                 break;
 
+            case CMD_TEST_SERVER:
+                dbg(COMMAND_CHANNEL, "Command Type: Client\n");
+                signal CommandHandler.setTestServer(buff[0]);
+                break;
+
             case CMD_TEST_CLIENT:
                 dbg(COMMAND_CHANNEL, "Command Type: Client\n");
                 signal CommandHandler.setTestClient(buff[0], buff[1], buff[2], &buff[3]);
                 break;
 
-            case CMD_TEST_SERVER:
+            case CMD_CLIENT_CLOSE:
                 dbg(COMMAND_CHANNEL, "Command Type: Client\n");
-                signal CommandHandler.setTestServer(buff[0], buff[1]);
+                signal CommandHandler.setClientClose(buff[0], buff[1], buff[2]);
                 break;
 
             case CMD_PRINT_MESSAGE:

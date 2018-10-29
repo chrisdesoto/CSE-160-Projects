@@ -15,6 +15,7 @@ module TransportP{
     uses interface Timer<TMilli> as RetransmissionTimer;
     uses interface NeighborDiscovery;
     uses interface DistanceVectorRouting;
+    uses interface Hashmap<uint8_t> as SocketMap;
 }
 
 implementation{
@@ -22,17 +23,146 @@ implementation{
     tcp_pack tcpPack;
     bool ports[NUM_SUPPORTED_PORTS];
     socket_store_t sockets[MAX_NUM_OF_SOCKETS];
+    uint8_t STOP_AND_WAIT = 0;
 
-    void makePack(pack *Package, uint16_t src, uint16_t dest, uint16_t TTL, uint16_t Protocol, uint16_t seq, void *payload, uint8_t length);
-    void sendTCPPacket(uint8_t fd, uint8_t flags, uint16_t* payload);
+    /*
+    * Helper functions
+    */
+
+    void makePack(pack *Package, uint16_t src, uint16_t dest, uint16_t TTL, uint16_t protocol, uint16_t seq, void* payload, uint8_t length) {
+        Package->src = src;
+        Package->dest = dest;
+        Package->TTL = TTL;
+        Package->seq = seq;
+        Package->protocol = protocol;
+        memcpy(Package->payload, payload, length);
+    }
+
+    void addConnection(uint8_t fd, uint8_t conn) {
+        uint8_t i;
+        for(i = 0; i < MAX_NUM_OF_SOCKETS-1; i++) {
+            if(sockets[fd-1].connectionQueue[i] == 0) {
+                sockets[fd-1].connectionQueue[i] = conn;
+                break;
+            }
+        }
+    }
+
+    uint8_t findSocket(uint8_t src, uint8_t srcPort, uint8_t dest, uint8_t destPort) {
+        uint32_t socketId = (((uint32_t)src) << 24) | (((uint32_t)srcPort) << 16) | (((uint32_t)dest) << 8) | (((uint32_t)destPort));
+        return call SocketMap.get(socketId);
+    }
+
+    uint8_t readInData(uint8_t fd, uint16_t* payload) {
+        uint8_t bytesProcessed = 0;
+        while(*payload != 0 && bytesProcessed < TCP_PACKET_PAYLOAD_LENGTH) {
+            sockets[fd-1].rcvdBuff[sockets[fd-1].lastRcvd+1] = *payload;
+            sockets[fd-1].lastRcvd++;
+            payload++;
+            bytesProcessed++;
+        }
+        sockets[fd-1].nextExpected = sockets[fd-1].lastRcvd + 1;
+        return bytesProcessed;
+    }
+
+    void sendTCPPacket(uint8_t fd, uint8_t flags, uint16_t* payload) {
+        tcpPack.srcPort = sockets[fd-1].src.port;
+        tcpPack.destPort = sockets[fd-1].dest.port;
+        //tcpPack.seq = sockets[fd-1].nextExpected;
+        tcpPack.flags = flags;
+        tcpPack.advertisedWindow = sockets[fd-1].advertisedWindow;
+        if(flags == DATA) {
+            memcpy(tcpPack.payload, payload, TCP_PACKET_PAYLOAD_SIZE);
+        }
+        // If ACK -> send previous seq num as ack bit
+        if(flags == ACK) {
+            tcpPack.seq = STOP_AND_WAIT ^ 1;
+        } else {
+            tcpPack.seq = STOP_AND_WAIT;
+        }
+        // Flip the stop-and-wait bit
+        STOP_AND_WAIT ^= 1;
+        makePack(&ipPack, TOS_NODE_ID, sockets[fd-1].dest.addr, BETTER_TTL, PROTOCOL_TCP, 0, &tcpPack, sizeof(tcp_pack));
+        call DistanceVectorRouting.routePacket(&ipPack);
+    }
+
+    void zeroTCPPacket() {
+        uint8_t i;
+        for(i = 0; i < TCP_PACKET_PAYLOAD_LENGTH; i++) {
+            tcpPack.payload[i] = 0;
+        }
+        tcpPack.srcPort = 0;
+        tcpPack.destPort = 0;
+        tcpPack.seq = 0;
+        tcpPack.flags = 0;
+        tcpPack.advertisedWindow = 0;
+    }
+
+    void zeroSocket(uint8_t fd) {
+        uint8_t i;        
+        sockets[fd-1].flags = 0;
+        sockets[fd-1].state = CLOSED;
+        sockets[fd-1].src.port = 0;
+        sockets[fd-1].src.addr = 0;
+        sockets[fd-1].dest.port = 0;
+        sockets[fd-1].dest.addr = 0;
+        for(i = 0; i < MAX_NUM_OF_SOCKETS-1; i++) {
+            sockets[fd-1].connectionQueue[i] = 0;
+        }
+        for(i = 0; i < SOCKET_BUFFER_SIZE; i++) {
+            sockets[fd-1].sendBuff[i] = 0;
+            sockets[fd-1].rcvdBuff[i] = 0;
+        }
+        sockets[fd-1].lastWritten = 0;
+        sockets[fd-1].lastAck = 0;
+        sockets[fd-1].lastSent = 0;
+        sockets[fd-1].lastRead = 0;
+        sockets[fd-1].lastRcvd = 0;
+        sockets[fd-1].nextExpected = 0;
+        sockets[fd-1].RTT = 0;
+        sockets[fd-1].advertisedWindow = 0;
+        sockets[fd-1].effectiveWindow = 0;        
+    }
+
+    uint8_t cloneSocket(uint8_t fd, uint16_t addr, uint8_t port) {
+        uint8_t i;
+        for(i = 0; i < MAX_NUM_OF_SOCKETS; i++) {
+            if(sockets[i].flags == 0) {
+                sockets[i].src.port = sockets[fd-1].src.port;
+                sockets[i].src.addr = sockets[fd-1].src.addr;
+                sockets[i].dest.addr = addr;
+                sockets[i].dest.port = port;
+                return i+1;
+            }
+        }
+        return 0;
+    }
+
+    void calcAdvWindow(socket_store_t* sock) {
+        if(sock->nextExpected-1 >= sock->lastRead)
+            sock->advertisedWindow = SOCKET_BUFFER_SIZE - ((sock->nextExpected-1) - sock->lastRead);
+        else
+            sock->advertisedWindow = SOCKET_BUFFER_SIZE - ((SOCKET_BUFFER_SIZE - (sock->nextExpected-1)) + sock->lastRead);
+    }
+
+    void calcEffWindow(socket_store_t* sock) {
+        if(sock->lastSent >= sock->lastAck)
+            sock->effectiveWindow = sock->advertisedWindow - (sock->lastSent - sock->lastAck);
+        else
+            sock->effectiveWindow = sock->advertisedWindow - ((SOCKET_BUFFER_SIZE - sock->lastSent) + sock->lastAck);
+    }
+
+    /*
+    * Interface methods
+    */
 
     command void Transport.start() {
-        //call RetransmissionTimer.startOneShot(60*1024);
+        call RetransmissionTimer.startOneShot(60*1024);
     }
 
     event void RetransmissionTimer.fired() {
         if(call RetransmissionTimer.isOneShot()) {
-            call RetransmissionTimer.startPeriodic(1024);
+            call RetransmissionTimer.startPeriodic(512);
         }
         // Iterate over sockets
             // If timeout -> retransmit
@@ -74,16 +204,21 @@ implementation{
     *       if you were unable to bind.
     */
     command error_t Transport.bind(socket_t fd, socket_addr_t *addr) {
+        uint32_t socketId = 0;
         // Check for valid socket
         if(fd == 0 || fd > MAX_NUM_OF_SOCKETS) {
             return FAIL;
         }
-        // For given socket & address        
+        // For given socket & address
         // If fd opened and port not in use
         if(sockets[fd-1].state == OPENED && !ports[addr->port]) {
             // Bind address and port to socket
             sockets[fd-1].src.addr = addr->addr;
             sockets[fd-1].src.port = addr->port;
+            sockets[fd-1].state = NAMED;
+            // Add the socket to the SocketMap
+            socketId = (((uint32_t)addr->addr) << 24) | (((uint32_t)addr->port) << 16);
+            call SocketMap.insert(socketId, fd);
             // Mark the port as used
             ports[addr->port] = TRUE;
             // Return SUCCESS
@@ -110,7 +245,7 @@ implementation{
         uint8_t i, conn;
         // Check for valid socket
         if(fd == 0 || fd > MAX_NUM_OF_SOCKETS) {
-            return FAIL;
+            return 0;
         }
         // For given socket
         for(i = 0; i < MAX_NUM_OF_SOCKETS-1; i++) {
@@ -120,9 +255,7 @@ implementation{
                 while(++i < MAX_NUM_OF_SOCKETS-1 && sockets[fd-1].connectionQueue[i] != 0) {
                     sockets[fd-1].connectionQueue[i-1] = sockets[fd-1].connectionQueue[i];
                 }
-                if(i == MAX_NUM_OF_SOCKETS-1) {
-                    sockets[fd-1].connectionQueue[i-1] = 0;
-                }
+                sockets[fd-1].connectionQueue[i-1] = 0;
                 // Return the fd representing the connection
                 return (socket_t) conn;
             }
@@ -146,12 +279,23 @@ implementation{
     *    from the pass buffer. This may be shorter then bufflen
     */
     command uint16_t Transport.write(socket_t fd, uint8_t *buff, uint16_t bufflen) {
+        uint16_t bytesWritten = 0;
         // Check for valid socket
-        if(fd == 0 || fd > MAX_NUM_OF_SOCKETS) {
-            return FAIL;
+        if(fd == 0 || fd > MAX_NUM_OF_SOCKETS || sockets[fd-1].state != ESTABLISHED) {
+            return 0;
         }
-        // Write to given socket until last written == last ack OR counter == bufflen
+        // Write all possible data to the given socket
+        while(bytesWritten < bufflen && sockets[fd-1].lastWritten != sockets[fd-1].lastAck-1) {
+            memcpy(&sockets[fd-1].sendBuff[sockets[fd-1].lastWritten], buff, 1);
+            buff++;
+            bytesWritten++;
+            sockets[fd-1].lastWritten++;
+            if(sockets[fd-1].lastWritten == SOCKET_BUFFER_SIZE) {
+                sockets[fd-1].lastWritten = 0;
+            }
+        }
         // Return number of bytes written
+        return bytesWritten;
     }
 
     /**
@@ -163,10 +307,132 @@ implementation{
     *    packet or FAIL if there are errors.
     */
     command error_t Transport.receive(pack* package) {
-        // Find corresponding socket
-        // If socket found
-            // Handle packet
-        // Else drop packet
+        uint8_t fd, newFd, src = package->src;
+        tcp_pack* tcp_rcvd = (tcp_pack*) &package->payload;
+        uint32_t socketId = 0;
+        switch(tcp_rcvd->flags) {
+            case DATA:
+                // Find socket fd
+                fd = findSocket(TOS_NODE_ID, tcp_rcvd->destPort, src, tcp_rcvd->srcPort);
+                // Process data
+                readInData(fd, &tcp_rcvd->payload);
+                // Send ACK
+                sendTCPPacket(fd, ACK, NULL);
+                break;
+            case ACK:
+                fd = findSocket(TOS_NODE_ID, tcp_rcvd->destPort, src, tcp_rcvd->srcPort);
+                if(fd == 0)
+                    break;
+                // Handle setup, data, teardown
+                switch(sockets[fd-1].state) {
+                    case SYN_RCVD:
+                        dbg(TRANSPORT_CHANNEL, "ACK received on node %u via port %u\n", TOS_NODE_ID, tcp_rcvd->destPort);
+                        // Set state
+                        sockets[fd-1].state = ESTABLISHED;
+                        dbg(TRANSPORT_CHANNEL, "CONNECTION ESTABLISHED!\n");
+                        break;
+                    case ESTABLISHED:
+                        // Data ACK
+                        sockets[fd-1].lastAck = sockets[fd-1].lastSent;
+                        break;
+                    case FIN_WAIT_1:
+                        // Set state
+                        sockets[fd-1].state = FIN_WAIT_2;
+                        break;
+                    case CLOSING:
+                        // Set state
+                        sockets[fd-1].state = TIME_WAIT;
+                        break;
+                    case LAST_ACK:
+                        zeroSocket(fd);
+                        // Set state
+                        sockets[fd-1].state = CLOSED;
+                }
+                break;
+            case SYN:
+                fd = findSocket(TOS_NODE_ID, tcp_rcvd->destPort, 0, 0);
+                if(fd > 0 && sockets[fd-1].state == LISTEN) {
+                    dbg(TRANSPORT_CHANNEL, "SYN recieved on node %u via port %u\n", TOS_NODE_ID, tcp_rcvd->destPort);
+                    // Create new active socket
+                    newFd = cloneSocket(fd, package->src, tcp_rcvd->srcPort);
+                    if(newFd > 0) {
+                        // Add new connection to fd connection queue
+                        addConnection(fd, newFd);
+                        // Send SYN_ACK
+                        sendTCPPacket(newFd, SYN_ACK, NULL);
+                        dbg(TRANSPORT_CHANNEL, "SYN_ACK sent on node %u via port %u\n", TOS_NODE_ID, tcp_rcvd->destPort);
+                        // Set state
+                        sockets[newFd-1].state = SYN_RCVD;
+                        // Add the new fd to the socket map
+                        socketId = (((uint32_t)TOS_NODE_ID) << 24) | (((uint32_t)tcp_rcvd->destPort) << 16) | (((uint32_t)src) << 8) | (((uint32_t)tcp_rcvd->srcPort));
+                        call SocketMap.insert(socketId, newFd);
+                        return SUCCESS;
+                    }
+                } else {
+                    // Look up the active socket
+                    fd = findSocket(TOS_NODE_ID, tcp_rcvd->destPort, src, tcp_rcvd->srcPort);
+                    if(fd == 0)
+                        break;
+                    if(newFd > 0) {
+                        // Send SYN_ACK
+                        sendTCPPacket(newFd, SYN_ACK, NULL);
+                        // Set state
+                        sockets[newFd-1].state = SYN_RCVD;
+                        return SUCCESS;
+                    }
+                }
+                break;
+            case SYN_ACK:
+                dbg(TRANSPORT_CHANNEL, "SYN_ACK received on node %u via port %u\n", TOS_NODE_ID, tcp_rcvd->destPort);
+                // Look up the socket
+                fd = findSocket(TOS_NODE_ID, tcp_rcvd->destPort, src, tcp_rcvd->srcPort);
+                if(sockets[fd-1].state == SYN_SENT) {
+                    // Send ACK
+                    sendTCPPacket(fd, ACK, NULL);
+                    dbg(TRANSPORT_CHANNEL, "ACK sent on node %u via port %u\n", TOS_NODE_ID, tcp_rcvd->destPort);
+                    // Set state
+                    sockets[fd-1].state = ESTABLISHED;
+                    dbg(TRANSPORT_CHANNEL, "CONNECTION ESTABLISHED!\n");
+                    return SUCCESS;
+                }
+                break;
+            case FIN:
+                // Look up the socket
+                fd = findSocket(TOS_NODE_ID, tcp_rcvd->destPort, src, tcp_rcvd->srcPort);
+                switch(sockets[fd-1].state) {
+                    case ESTABLISHED:
+                        // Send ACK
+                        sendTCPPacket(fd, ACK, NULL);
+                        // Set state
+                        sockets[fd-1].state = CLOSE_WAIT;
+                        return SUCCESS;
+                    case FIN_WAIT_1:
+                        // Send ACK
+                        sendTCPPacket(fd, ACK, NULL);
+                        // Set state
+                        sockets[fd-1].state = CLOSING;
+                        return SUCCESS;
+                    case FIN_WAIT_2:
+                        // Send ACK
+                        sendTCPPacket(fd, ACK, NULL);
+                        // Set state
+                        sockets[fd-1].state = TIME_WAIT;
+                        return SUCCESS;
+                }
+                break;
+            case FIN_ACK:
+                // Look up the socket
+                fd = findSocket(TOS_NODE_ID, tcp_rcvd->destPort, src, tcp_rcvd->srcPort);
+                switch(sockets[fd-1].state) {
+                    case FIN_WAIT_1:
+                        // Send ACK
+                        sendTCPPacket(fd, ACK, NULL);
+                        // Go to time_wait
+                        return SUCCESS;             
+                }
+                break;
+        }
+        return FAIL;
     }
 
     /**
@@ -185,12 +451,23 @@ implementation{
     *    from the pass buffer. This may be shorter then bufflen
     */
     command uint16_t Transport.read(socket_t fd, uint8_t *buff, uint16_t bufflen) {
+        uint16_t bytesRead = 0;
         // Check for valid socket
-        if(fd == 0 || fd > MAX_NUM_OF_SOCKETS) {
-            return FAIL;
+        if(fd == 0 || fd > MAX_NUM_OF_SOCKETS || sockets[fd-1].state != ESTABLISHED) {
+            return 0;
         }
-        // Read to given socket until last read == last received
+        // Read all possible data from the given socket
+        while(bytesRead < bufflen && sockets[fd-1].lastRead != sockets[fd-1].lastRcvd) {
+            memcpy(&sockets[fd-1].rcvdBuff[sockets[fd-1].lastRead], buff, 1);
+            buff++;
+            bytesRead++;
+            sockets[fd-1].lastRead++;
+            if(sockets[fd-1].lastRead == SOCKET_BUFFER_SIZE) {
+                sockets[fd-1].lastRead = 0;
+            }
+        }
         // Return number of bytes written
+        return bytesRead;
     }
 
     /**
@@ -205,18 +482,29 @@ implementation{
     * @return socket_t - returns SUCCESS if you are able to attempt
     *    a connection with the fd passed, else return FAIL.
     */
-    command error_t Transport.connect(socket_t fd, socket_addr_t * addr) {
+    command error_t Transport.connect(socket_t fd, socket_addr_t * dest) {
+        uint32_t socketId = 0;
         // Check for valid socket
-        if(fd == 0 || fd > MAX_NUM_OF_SOCKETS) {
+        if(fd == 0 || fd > MAX_NUM_OF_SOCKETS || sockets[fd-1].state != NAMED) {
             return FAIL;
         }
-        // Initiate SYN sequence
+        // Remove the old socket from the 
+        socketId = (((uint32_t)sockets[fd-1].src.addr) << 24) | (((uint32_t)sockets[fd-1].src.port) << 16);
+        call SocketMap.remove(socketId);
+        // Add the dest to the socket
+        sockets[fd-1].dest.addr = dest->addr;
+        sockets[fd-1].dest.port = dest->port;
         // Send SYN
         sendTCPPacket(fd, SYN, NULL);
+        // Add new socket to SocketMap
+        socketId |= (((uint32_t)dest->addr) << 8) | ((uint32_t)dest->port);
+        call SocketMap.insert(socketId, fd);
         // Set timeout
         sockets[fd-1].RTX = call RetransmissionTimer.getNow() + 2*sockets[fd-1].RTT;
-        // Set SYN-SENT
+        // Set SYN_SENT
         sockets[fd-1].state = SYN_SENT;
+        dbg(TRANSPORT_CHANNEL, "SYN sent on node %u via port %u\n", TOS_NODE_ID, sockets[fd-1].src.port);
+        return SUCCESS;
     }
 
     /**
@@ -229,16 +517,51 @@ implementation{
     *    a closure with the fd passed, else return FAIL.
     */
     command error_t Transport.close(socket_t fd) {
+        uint32_t socketId = 0;
         // Check for valid socket
         if(fd == 0 || fd > MAX_NUM_OF_SOCKETS) {
             return FAIL;
         }
-        // Initite FIN sequence
-        sendTCPPacket(fd, FIN, NULL);
-        // Set timeout
-        sockets[fd-1].RTX = call RetransmissionTimer.getNow() + 2*sockets[fd-1].RTT;
-        // Set FIN_WAIT_1
-        sockets[fd-1].state = FIN_WAIT_1;
+        switch(sockets[fd-1].state) {
+            case LISTEN:
+                // Remove from SocketMap
+                socketId = (((uint32_t)sockets[fd-1].src.addr) << 24) | (((uint32_t)sockets[fd-1].src.port) << 16);
+                call SocketMap.remove(socketId);
+                // Free the port
+                ports[sockets[fd-1].src.port] = FALSE;
+                // Zero the socket
+                zeroSocket(fd);
+                // Set CLOSED
+                sockets[fd-1].state = CLOSED;
+                return SUCCESS;
+            case SYN_SENT:
+                // Remove from SocketMap
+                socketId = (((uint32_t)sockets[fd-1].src.addr) << 24) | (((uint32_t)sockets[fd-1].src.port) << 16) | (((uint32_t)sockets[fd-1].dest.addr) << 8) | ((uint32_t)sockets[fd-1].dest.port);
+                call SocketMap.remove(socketId);
+                // Zero the socket
+                zeroSocket(fd);
+                // Set CLOSED
+                sockets[fd-1].state = CLOSED;
+                return SUCCESS;
+            case ESTABLISHED:
+            case SYN_RCVD:
+                // Initiate FIN sequence
+                sendTCPPacket(fd, FIN, NULL);
+                // Set timeout
+                sockets[fd-1].RTX = call RetransmissionTimer.getNow() + 2*sockets[fd-1].RTT;
+                // Set FIN_WAIT_1
+                sockets[fd-1].state = FIN_WAIT_1;
+                return SUCCESS;
+            case CLOSE_WAIT:
+                // Continue FIN sequence
+                sendTCPPacket(fd, FIN, NULL);
+                // Set timeout
+                sockets[fd-1].RTX = call RetransmissionTimer.getNow() + 2*sockets[fd-1].RTT;
+                // Set LAST_ACK
+                sockets[fd-1].state = LAST_ACK;
+                return SUCCESS;
+        }
+        return FAIL;
     }
 
     /**
@@ -257,28 +580,8 @@ implementation{
             return FAIL;
         }
         // Clear socket info
-        sockets[fd-1].flags = 0;
-        sockets[fd-1].state = CLOSED;
-        sockets[fd-1].src.port = 0;
-        sockets[fd-1].src.addr = 0;
-        sockets[fd-1].dest.port = 0;
-        sockets[fd-1].dest.addr = 0;
-        for(i = 0; i < MAX_NUM_OF_SOCKETS-1; i++) {
-            sockets[fd-1].connectionQueue[i] = 0;
-        }
-        for(i = 0; i < SOCKET_BUFFER_SIZE; i++) {
-            sockets[fd-1].sendBuff[i] = 0;
-            sockets[fd-1].rcvdBuff[i] = 0;
-        }
-        sockets[fd-1].lastWritten = 0;
-        sockets[fd-1].lastAck = 0;
-        sockets[fd-1].lastSent = 0;
-        sockets[fd-1].lastRead = 0;
-        sockets[fd-1].lastRcvd = 0;
-        sockets[fd-1].nextExpected = 0;
-        sockets[fd-1].RTT = 0;
-        sockets[fd-1].advertisedWindow = 0;
-        sockets[fd-1].effectiveWindow = 0;
+        zeroSocket(fd);
+        return SUCCESS;
     }
 
     /**
@@ -290,80 +593,19 @@ implementation{
     * @return error_t - returns SUCCESS if you are able change the state 
     *   to listen else FAIL.
     */
-    command error_t Transport.listen(socket_t fd) {
+    command error_t Transport.listen(socket_t fd) {        
         if(fd == 0 || fd > MAX_NUM_OF_SOCKETS) {
             return FAIL;
         }
         // If socket is bound
-        if(sockets[fd-1].state == OPENED) {
+        if(sockets[fd-1].state == NAMED) {
             // Set socket to LISTEN
             sockets[fd-1].state = LISTEN;
+            // Add socket to SocketMap
             return SUCCESS;
         } else {
             return FAIL;
         }
     }
-
-    void sendTCPPacket(uint8_t fd, uint8_t flags, uint16_t* payload) {
-        tcpPack.srcPort = sockets[fd-1].src.port;
-        tcpPack.destPort = sockets[fd-1].dest.port;
-        tcpPack.seq = sockets[fd-1].nextExpected;
-        tcpPack.flags = flags;
-        tcpPack.advertisedWindow = sockets[fd-1].advertisedWindow;
-        if(flags == DATA)
-            memcpy(tcpPack.payload, payload, TCP_PACKET_PAYLOAD_SIZE);
-        makePack(&ipPack, TOS_NODE_ID, sockets[fd-1].dest.addr, BETTER_TTL, PROTOCOL_TCP, 0, &tcpPack, sizeof(tcp_pack));
-        call DistanceVectorRouting.routePacket(&ipPack);
-    }
-
-    void zeroTCPPacket() {
-        uint8_t i;
-        for(i = 0; i < TCP_PACKET_PAYLOAD_LENGTH; i++) {
-            tcpPack.payload[i] = 0;
-        }
-        tcpPack.srcPort = 0;
-        tcpPack.destPort = 0;
-        tcpPack.seq = 0;
-        tcpPack.flags = 0;
-        tcpPack.advertisedWindow = 0;
-
-    }
-
-    uint8_t cloneSocket(socket_store_t* sock, uint16_t addr, uint8_t port, uint16_t rtt) {
-        uint8_t i;
-        for(i = 0; i < MAX_NUM_OF_SOCKETS; i++) {
-            if(sockets[i].flags == 0) {
-                sockets[i].state = SYN_RCVD;
-                sockets[i].src.port = sock->src.port;
-                sockets[i].src.addr = sock->src.addr;
-                sockets[i].dest.addr = addr;
-                sockets[i].dest.port = port;
-                sockets[i].RTT = rtt;
-            }
-        }
-    }
-
-    void calcAdvWindow(socket_store_t* sock) {
-        if(sock->nextExpected-1 >= sock->lastRead)
-            sock->advertisedWindow = SOCKET_BUFFER_SIZE - ((sock->nextExpected-1) - sock->lastRead);
-        else
-            sock->advertisedWindow = SOCKET_BUFFER_SIZE - ((SOCKET_BUFFER_SIZE - (sock->nextExpected-1)) + sock->lastRead);
-    }
-
-    void calcEffWindow(socket_store_t* sock) {
-        if(sock->lastSent >= sock->lastAck)
-            sock->effectiveWindow = sock->advertisedWindow - (sock->lastSent - sock->lastAck);
-        else
-            sock->effectiveWindow = sock->advertisedWindow - ((SOCKET_BUFFER_SIZE - sock->lastSent) + sock->lastAck);
-    }
-
-    void makePack(pack *Package, uint16_t src, uint16_t dest, uint16_t TTL, uint16_t protocol, uint16_t seq, void* payload, uint8_t length) {
-        Package->src = src;
-        Package->dest = dest;
-        Package->TTL = TTL;
-        Package->seq = seq;
-        Package->protocol = protocol;
-        memcpy(Package->payload, payload, length);
-    }        
 
 }

@@ -38,8 +38,8 @@ implementation {
             dbg(NEIGHBOR_CHANNEL, "Neighbor Discovery PINGREPLY! Found Neighbor %d\n", myMsg->src);
             if(!call NeighborMap.contains(myMsg->src)) {
                 call NeighborMap.insert(myMsg->src, ND_TTL);
-                //call DistanceVectorRouting.handleNeighborFound();
-                call LinkStateRouting.handleNeighborFound();
+                call DistanceVectorRouting.handleNeighborFound();
+                //call LinkStateRouting.handleNeighborFound();
             } else {
                 call NeighborMap.insert(myMsg->src, ND_TTL);
             }
@@ -58,8 +58,8 @@ implementation {
             }
             if(call NeighborMap.get(keys[i]) == 0) {
                 dbg(NEIGHBOR_CHANNEL, "Removing Neighbor %d\n", keys[i]);
-                //call DistanceVectorRouting.handleNeighborLost(keys[i]);
-                call LinkStateRouting.handleNeighborLost(keys[i]);
+                call DistanceVectorRouting.handleNeighborLost(keys[i]);
+                //call LinkStateRouting.handleNeighborLost(keys[i]);
                 call NeighborMap.remove(keys[i]);
             } else {
                 call NeighborMap.insert(keys[i], call NeighborMap.get(keys[i])-1);
