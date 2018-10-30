@@ -20,6 +20,7 @@ module Node {
     uses interface SplitControl as AMControl;
     uses interface Receive;
     uses interface Transport;
+    uses interface TransportApp;
     uses interface CommandHandler;
     uses interface Flooding;
     uses interface NeighborDiscovery as NeighborDiscovery;
@@ -92,27 +93,33 @@ implementation {
     }
 
     event void CommandHandler.setTestServer(uint8_t port) {
+        /*
         socket_addr_t src;        
         uint8_t fd = call Transport.socket();
         src.addr = TOS_NODE_ID;
         src.port = port;
         call Transport.bind(fd, &src);
         call Transport.listen(fd);
+        */
+        call TransportApp.startServer(port);
         dbg(TRANSPORT_CHANNEL, "Node %u listening on port %u\n", TOS_NODE_ID, port);
     }
 
-    event void CommandHandler.setTestClient(uint8_t dest, uint8_t srcPort, uint8_t destPort, uint16_t payload) {
+    event void CommandHandler.setTestClient(uint8_t dest, uint8_t srcPort, uint8_t destPort, uint16_t transfer) {
+        /*
         socket_addr_t srcAddr;
         socket_addr_t destAddr;
         uint8_t fd;
         srcAddr.addr = TOS_NODE_ID;
         srcAddr.port = srcPort;
         destAddr.addr = dest;
-        destAddr.port = destPort;
+        destAddr.port = destPort;        
         fd = call Transport.socket();
         call Transport.bind(fd, &srcAddr);
         call Transport.connect(fd, &destAddr);
-        dbg(TRANSPORT_CHANNEL, "Node %u creating connection from port %u to port %u on node %u. Sending payload: %u\n", TOS_NODE_ID, srcPort, dest, destPort, payload);
+        */
+        call TransportApp.startClient(dest, srcPort, destPort, transfer);
+        dbg(TRANSPORT_CHANNEL, "Node %u creating connection from port %u to port %u on node %u. Transferring bytes: %u\n", TOS_NODE_ID, srcPort, dest, destPort, transfer);
     }
 
     event void CommandHandler.setClientClose(uint8_t dest, uint8_t srcPort, uint8_t destPort) {}

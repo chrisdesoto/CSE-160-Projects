@@ -23,7 +23,7 @@ implementation {
     TransportAppP.Sender -> SimpleSendC;
 
     components new TimerMilliC() as AppTimer;
-    TransportP.AppTimer -> AppTimer;
+    TransportAppP.AppTimer -> AppTimer;
 
     components RandomC as Random;
     TransportAppP.Random -> Random;

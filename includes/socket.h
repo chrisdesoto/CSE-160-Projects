@@ -8,6 +8,11 @@ enum{
     SOCKET_BUFFER_SIZE = 128,
 };
 
+enum socket_type {
+    SERVER,
+    CLIENT
+};
+
 enum socket_state{
     CLOSED,
     OPENED,
@@ -42,6 +47,7 @@ typedef uint8_t socket_t;
 typedef struct socket_store_t {
     uint8_t flags;
     enum socket_state state;
+    enum socket_type type;
     socket_addr_t src;
     socket_addr_t dest;
     uint8_t connectionQueue[MAX_NUM_OF_SOCKETS-1];

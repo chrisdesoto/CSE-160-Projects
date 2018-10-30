@@ -27,13 +27,13 @@ def main():
 #    s.addChannel(s.ROUTING_CHANNEL)
     s.addChannel(s.TRANSPORT_CHANNEL)
 
-    s.runTime(10)
+    s.runTime(40)
 
     s.cmdTestServer(1, 50)
     s.runTime(10)
 
-    s.cmdTestClient(2, 1, 25, 50, 10000)
-    s.runTime(30)
+    s.cmdTestClient(2, 1, 25, 50, 90)
+    s.runTime(200)
 
 if __name__ == '__main__':
     main()

@@ -42,4 +42,7 @@ implementation {
 
     components TransportC;
     Node.Transport -> TransportC;
+
+    components TransportAppC;
+    Node.TransportApp -> TransportAppC;
 }

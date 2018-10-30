@@ -85,11 +85,11 @@ implementation {
         }
         if((nextHop = findNextHop(myMsg->dest))) {
             dbg(ROUTING_CHANNEL, "Node %d routing packet through %d\n", TOS_NODE_ID, nextHop);
-            logPack(myMsg);
+            //logPack(myMsg);
             call Sender.send(*myMsg, nextHop);
         } else {
             dbg(ROUTING_CHANNEL, "No route to destination. Dropping packet...\n");
-            logPack(myMsg);
+            //logPack(myMsg);
         }
     }
 
