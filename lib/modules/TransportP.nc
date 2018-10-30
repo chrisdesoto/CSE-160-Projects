@@ -99,7 +99,7 @@ implementation{
     }
 
     void zeroSocket(uint8_t fd) {
-        uint8_t i;        
+        uint8_t i;
         sockets[fd-1].flags = 0;
         sockets[fd-1].state = CLOSED;
         sockets[fd-1].src.port = 0;

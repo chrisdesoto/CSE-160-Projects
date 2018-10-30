@@ -101,7 +101,7 @@ implementation {
         dbg(TRANSPORT_CHANNEL, "Node %u listening on port %u\n", TOS_NODE_ID, port);
     }
 
-    event void CommandHandler.setTestClient(uint8_t dest, uint8_t srcPort, uint8_t destPort, uint8_t *payload) {
+    event void CommandHandler.setTestClient(uint8_t dest, uint8_t srcPort, uint8_t destPort, uint16_t payload) {
         socket_addr_t srcAddr;
         socket_addr_t destAddr;
         uint8_t fd;
@@ -112,7 +112,7 @@ implementation {
         fd = call Transport.socket();
         call Transport.bind(fd, &srcAddr);
         call Transport.connect(fd, &destAddr);
-        dbg(TRANSPORT_CHANNEL, "Node %u creating connection from port %u to port %u on node %u. Sending payload: %s\n", TOS_NODE_ID, srcPort, dest, destPort, payload);
+        dbg(TRANSPORT_CHANNEL, "Node %u creating connection from port %u to port %u on node %u. Sending payload: %u\n", TOS_NODE_ID, srcPort, dest, destPort, payload);
     }
 
     event void CommandHandler.setClientClose(uint8_t dest, uint8_t srcPort, uint8_t destPort) {}

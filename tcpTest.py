@@ -24,7 +24,7 @@ def main():
 #    s.addChannel(s.MAPLIST_CHANNEL)
 #    s.addChannel(s.FLOODING_CHANNEL)
 #    s.addChannel(s.NEIGHBOR_CHANNEL)
-    s.addChannel(s.ROUTING_CHANNEL)
+#    s.addChannel(s.ROUTING_CHANNEL)
     s.addChannel(s.TRANSPORT_CHANNEL)
 
     s.runTime(10)
@@ -32,7 +32,7 @@ def main():
     s.cmdTestServer(1, 50)
     s.runTime(10)
 
-    s.cmdTestClient(2, 1, 25, 50, "Hello World!")
+    s.cmdTestClient(2, 1, 25, 50, 10000)
     s.runTime(30)
 
 if __name__ == '__main__':
