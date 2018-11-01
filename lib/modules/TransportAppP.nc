@@ -23,15 +23,17 @@ implementation{
         uint8_t conns[MAX_NUM_OF_SOCKETS-1];
         uint8_t numConns;
         uint8_t buffer[1024];
-        uint8_t bytesRead;
-        uint8_t bytesWritten;
+        uint16_t bytesRead;
+        uint16_t bytesWritten;
     } server_t;
 
     typedef struct client_t {
         uint8_t sockfd;
+        uint16_t bytesWritten;
         uint16_t bytesTransferred;
+        uint16_t counter;
         uint16_t transfer;
-        uint8_t buffer[2];
+        uint8_t buffer[1024];
     } client_t;
 
     server_t server;
@@ -50,7 +52,7 @@ implementation{
                 server.bytesRead = 0;
                 server.bytesWritten = 0;                
                 call Transport.listen(server.sockfd);
-                call AppTimer.startPeriodic(4096);
+                call AppTimer.startPeriodic(1024 + (uint16_t) (call Random.rand16()%1000));
             }
         }
     }
@@ -76,9 +78,11 @@ implementation{
             return;
         }
         client.transfer = transfer;
+        client.counter = 0;
+        client.bytesWritten = 0;
         client.bytesTransferred = 0;
         if(!(call AppTimer.isRunning())) {
-            call AppTimer.startPeriodic(2048);
+            call AppTimer.startPeriodic(5000 + (uint16_t) (call Random.rand16()%1000));
         }
     }
 
@@ -101,46 +105,53 @@ implementation{
                 server.conns[server.numConns++] = newFd;
             }
         }
-        // Read and print
+        /*
+        if(server.sockfd > 0) {
+            dbg(TRANSPORT_CHANNEL, "ServerApp: bytesWritten %u\n", server.bytesWritten);
+            dbg(TRANSPORT_CHANNEL, "ServerApp: bytesRead %u\n", server.bytesRead);
+        }
+        */
         for(i = 0; i < server.numConns; i++) {
             length = 10;
             if(server.conns[i] != 0) {
-                /*while(bytes < 2 && (counter > 0 || bytes == 1)) {
-                    //dbg(TRANSPORT_CHANNEL, "Attempting to read. Bytes at %u\n", bytes);
-                    bytes += call Transport.read(server.conns[i], server.buffer, 2);
-                    if(counter > 0)
-                        counter--;
-                }
-                if(bytes == 2) {
-                    data = (server.buffer[1] << 8) | server.buffer[0];
-                    dbg(TRANSPORT_CHANNEL, "Reading Data:%u\n", data);
-                }*/
                 if(length > (1024 - server.bytesWritten)) {
                     length = 1024 - server.bytesWritten;
                 }
                 bytes += call Transport.read(server.conns[i], &server.buffer[server.bytesWritten], length);
                 server.bytesWritten += bytes;
+                //dbg(TRANSPORT_CHANNEL, "ServerApp: bytes read from socket %u\n", bytes);
                 if(server.bytesWritten == 1024) {
-                    server.bytesWritten == 0;
+                    dbg(TRANSPORT_CHANNEL, "ServerApp wrapping\n");
+                    server.bytesWritten = 0;
                 }
             }
         }
-        // Handle wrap!!!
-        while((server.bytesWritten - server.bytesRead) >= 2) {
-            if(!isRead) {
-                dbg(TRANSPORT_CHANNEL, "Reading Data:");
-                isRead = TRUE;
+        if(server.bytesWritten != server.bytesRead) {
+            while((((uint16_t)(server.bytesWritten - server.bytesRead)) >= 2) && ((1024 - server.bytesRead) >= 2)) {
+                if(!isRead) {
+                    dbg(TRANSPORT_CHANNEL, "Reading Data:");
+                    isRead = TRUE;
+                }
+                //printf("|%u|", server.bytesRead);
+                data = (((uint16_t)server.buffer[server.bytesRead+1]) << 8) | (uint16_t)server.buffer[server.bytesRead];
+                printf("%u,", data);
+                server.bytesRead += 2;
+                if(server.bytesRead == 1024) {
+                    server.bytesRead = 0;
+                    break;
+                }
             }
-            data = (((uint16_t)server.buffer[server.bytesRead+1]) << 8) | (uint16_t)server.buffer[server.bytesRead];
-            printf("%u,", data);
-            server.bytesRead += 2;
+            if(isRead)
+                printf("\n");
         }
-        if(isRead)
-            printf("\n");
     }
 
     void handleClient() {
-        uint8_t counter = 10, bytes = 0;
+        uint8_t counter = 10;
+        uint16_t bytes = 0, bytesToTransfer;
+        if(client.sockfd == 0)
+            return;
+        /*
         // Write data
         if(client.bytesTransferred < client.transfer) {
             //memcpy(client.buffer, (uint8_t* ) &client.bytesTransferred, 2);
@@ -155,7 +166,39 @@ implementation{
             if(bytes == 2) {
                 client.bytesTransferred++;
             }
+        }*/
+        if(client.bytesWritten < client.bytesTransferred) {
+            bytesToTransfer = 1024 - client.bytesTransferred;
+        } else {
+            bytesToTransfer = client.bytesWritten - client.bytesTransferred;
         }
+        /*
+        dbg(TRANSPORT_CHANNEL, "bytesWritten %u\n", client.bytesWritten);
+        dbg(TRANSPORT_CHANNEL, "bytesTransferred %u\n", client.bytesTransferred);
+        dbg(TRANSPORT_CHANNEL, "bytesToTransfer %u\n", bytesToTransfer);
+        */
+        // Writing to buffer
+        while(/*client.bytesWritten < (uint16_t)(client.bytesTransferred-1) && */client.counter < client.transfer) {
+            if((client.bytesWritten & 1) == 0) {
+                client.buffer[client.bytesWritten] = client.counter & 0xFF;
+            } else {
+                client.buffer[client.bytesWritten] = client.counter >> 8;
+                client.counter++;
+                dbg(TRANSPORT_CHANNEL, "Client writing data: %u\n", (uint16_t)client.buffer[client.bytesWritten] << 8 | (uint16_t)client.buffer[client.bytesWritten-1]);
+            }
+            client.bytesWritten++;
+            if(client.bytesWritten == 1024 && ((1024 - client.bytesWritten) + client.bytesTransferred) > 0) {
+                client.bytesWritten = 0;
+            }
+        }
+        // Writing to socket
+        if(client.bytesTransferred != client.bytesWritten) {
+            bytes += call Transport.write(client.sockfd, &client.buffer[client.bytesTransferred], bytesToTransfer);
+            client.bytesTransferred += bytes;
+            //dbg(TRANSPORT_CHANNEL, "transferred %u bytes\n", bytes);
+        }
+        if(client.bytesTransferred == 1024)
+            client.bytesTransferred = 0;
     }
 
 }

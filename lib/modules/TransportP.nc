@@ -23,8 +23,8 @@ implementation{
     tcp_pack tcpPack;
     bool ports[NUM_SUPPORTED_PORTS];
     socket_store_t sockets[MAX_NUM_OF_SOCKETS];
-    uint8_t STOP_AND_WAIT = 0;
-
+    bool ACKED = TRUE;
+    int STOP_AND_WAIT = 0;
     /*
     * Helper functions
     */
@@ -36,6 +36,13 @@ implementation{
         Package->seq = seq;
         Package->protocol = protocol;
         memcpy(Package->payload, payload, length);
+    }
+
+    uint16_t min(uint16_t a, uint16_t b) {
+        if(a <= b)
+            return a;
+        else
+            return b;
     }
 
     void addConnection(uint8_t fd, uint8_t conn) {
@@ -58,47 +65,99 @@ implementation{
         dbg(TRANSPORT_CHANNEL, "last read %u, last received %u, next expected %u\n", sockets[fd-1].lastRead, sockets[fd-1].lastRcvd, sockets[fd-1].nextExpected);
     }
 
-    uint8_t readInData(uint8_t fd, tcp_pack* tcp_rcvd) {
-        memcpy(&sockets[fd-1].rcvdBuff[sockets[fd-1].lastRcvd], tcp_rcvd->payload, tcp_rcvd->length);
-        sockets[fd-1].lastRcvd += tcp_rcvd->length;
+    uint16_t calculateSendWindow(uint8_t fd) {
+        if(sockets[fd-1].lastSent == sockets[fd-1].lastWritten)
+            return 0;
+        else if(sockets[fd-1].lastSent > sockets[fd-1].lastWritten)
+            return sockets[fd-1].lastWritten + (SOCKET_BUFFER_SIZE - sockets[fd-1].lastSent);
+        else
+            return sockets[fd-1].lastWritten - sockets[fd-1].lastSent;
+    }
+
+    uint16_t calculateReceiveWindow(uint8_t fd) {
+        if(sockets[fd-1].lastRead == sockets[fd-1].lastRcvd)
+            return 0;
+        else if(sockets[fd-1].lastRead > sockets[fd-1].lastRcvd)
+            return sockets[fd-1].lastRcvd + (SOCKET_BUFFER_SIZE - sockets[fd-1].lastRead);
+        else
+            return sockets[fd-1].lastRcvd - sockets[fd-1].lastRead;
+    }
+
+    uint16_t calculateSendBufferSize(uint8_t fd) {
+        if(sockets[fd-1].lastAck == sockets[fd-1].lastWritten)
+            return SOCKET_BUFFER_SIZE - 1;
+        else if(sockets[fd-1].lastAck > sockets[fd-1].lastWritten)
+            return sockets[fd-1].lastAck - sockets[fd-1].lastWritten - 1;
+        else
+            return sockets[fd-1].lastAck + (SOCKET_BUFFER_SIZE - sockets[fd-1].lastWritten) - 1;
+    }    
+
+    uint16_t calculateReceiveBufferSize(uint8_t fd) {
+        if(sockets[fd-1].lastRead == sockets[fd-1].lastRcvd)
+            return SOCKET_BUFFER_SIZE - 1;
+        else if(sockets[fd-1].lastRead > sockets[fd-1].lastRcvd)
+            return sockets[fd-1].lastRead - sockets[fd-1].lastRcvd - 1;
+        else
+            return sockets[fd-1].lastRead + (SOCKET_BUFFER_SIZE - sockets[fd-1].lastRcvd) - 1;
+    }
+
+    bool readInData(uint8_t fd, tcp_pack* tcp_rcvd) {
+        uint16_t i, bytesRead = 0;
+        if(calculateReceiveBufferSize(fd) < tcp_rcvd->length) {
+            dbg(TRANSPORT_CHANNEL, "Returning false. Can't fit packet\n");
+            return FALSE;
+        }
+        //dbg(TRANSPORT_CHANNEL, "Receive buffer size %u\n", calculateReceiveBufferSize(fd));        
+        //dbg(TRANSPORT_CHANNEL, "Server reading packet %u data\n", tcp_rcvd->length);
+        // for(i = 0; i < tcp_rcvd->length/2; i++) {
+        //     dbg(TRANSPORT_CHANNEL, "%u\n", ((tcp_rcvd->payload[i] & 0xFF) << 8) | tcp_rcvd->payload[i] >> 8);
+        // }        
+        while(bytesRead < tcp_rcvd->length && calculateReceiveBufferSize(fd) > 0) {
+            memcpy(&sockets[fd-1].rcvdBuff[sockets[fd-1].lastRcvd], &tcp_rcvd->payload[bytesRead/2], 2);
+            bytesRead += 2;
+            sockets[fd-1].lastRcvd += 2;
+            if(sockets[fd-1].lastRcvd >= SOCKET_BUFFER_SIZE && calculateReceiveBufferSize(fd) > 0) {
+                //dbg(TRANSPORT_CHANNEL, "Resetting received %u. Receive buffer size %u\n", sockets[fd-1].lastRcvd, calculateReceiveBufferSize(fd));
+                sockets[fd-1].lastRcvd = 0;
+            } else if(sockets[fd-1].lastRcvd >= SOCKET_BUFFER_SIZE) {
+                dbg(TRANSPORT_CHANNEL, "Returning false. Can't fit packet\n");
+                sockets[fd-1].lastRcvd -= bytesRead;
+                return FALSE;
+            }
+        }
         sockets[fd-1].nextExpected = sockets[fd-1].lastRcvd + 1;
-        return tcp_rcvd->length;
+        return TRUE;
     }
 
     void sendTCPPacket(uint8_t fd, uint8_t flags, uint16_t* payload) {
-        uint8_t length;
+        uint8_t length, bytes = 0;
+        uint16_t i;
         tcpPack.srcPort = sockets[fd-1].src.port;
         tcpPack.destPort = sockets[fd-1].dest.port;
         //tcpPack.seq = sockets[fd-1].nextExpected;
         tcpPack.flags = flags;
-        tcpPack.advertisedWindow = sockets[fd-1].advertisedWindow;
+        tcpPack.advertisedWindow = sockets[fd-1].advertisedWindow;        
         if(flags == DATA) {
-            length = sockets[fd-1].lastWritten - sockets[fd-1].lastSent;
-            if(length == 0 || sockets[fd-1].lastAck != sockets[fd-1].lastSent) {
+            //dbg(TRANSPORT_CHANNEL, "Send window size: %u\n", calculateSendWindow(fd));
+            length = min(calculateSendWindow(fd), TCP_PACKET_PAYLOAD_SIZE);
+            length -= length & 1;
+            if(length == 0 || !ACKED) {
                 return;
             }
-            dbg(TRANSPORT_CHANNEL, "Node %u sending %u bytes of data\n", TOS_NODE_ID, length);
-            if(length < TCP_PACKET_PAYLOAD_SIZE*2) {
-                memcpy(tcpPack.payload, &sockets[fd-1].sendBuff[sockets[fd-1].lastSent], length);
-                sockets[fd-1].lastSent += length;
-                tcpPack.length = length;
-            } else {
-                memcpy(tcpPack.payload, &sockets[fd-1].sendBuff[sockets[fd-1].lastSent], TCP_PACKET_PAYLOAD_SIZE*2);
-                sockets[fd-1].lastSent += TCP_PACKET_PAYLOAD_SIZE*2;
-                tcpPack.length = TCP_PACKET_PAYLOAD_SIZE*2;
+            while(bytes < length) {
+                memcpy(tcpPack.payload+(bytes>>1), &sockets[fd-1].sendBuff[sockets[fd-1].lastSent], 2);
+                bytes += 2;
+                sockets[fd-1].lastSent += 2;
+                if(sockets[fd-1].lastSent == SOCKET_BUFFER_SIZE) {
+                    sockets[fd-1].lastSent = 0;
+                }
             }
-            if(sockets[fd-1].lastSent >= SOCKET_BUFFER_SIZE) {
-                sockets[fd-1].lastSent -= SOCKET_BUFFER_SIZE;
-            }
+            tcpPack.length = length;
+            ACKED = FALSE;
         }
         // If ACK -> send previous seq num as ack bit
-        if(flags == ACK) {
-            tcpPack.seq = STOP_AND_WAIT ^ 1;
-        } else {
-            tcpPack.seq = STOP_AND_WAIT;
-        }
+        tcpPack.seq = STOP_AND_WAIT;
         // Flip the stop-and-wait bit
-        STOP_AND_WAIT ^= 1;
         makePack(&ipPack, TOS_NODE_ID, sockets[fd-1].dest.addr, BETTER_TTL, PROTOCOL_TCP, 0, &tcpPack, sizeof(tcp_pack));
         call DistanceVectorRouting.routePacket(&ipPack);
     }
@@ -133,6 +192,7 @@ implementation{
         sockets[fd-1].lastWritten = 0;
         sockets[fd-1].lastAck = 0;
         sockets[fd-1].lastSent = 0;
+        sockets[fd-1].sendSize = 0;
         sockets[fd-1].lastRead = 0;
         sockets[fd-1].lastRcvd = 0;
         sockets[fd-1].nextExpected = 0;
@@ -185,7 +245,7 @@ implementation{
         uint8_t i;
         if(call RetransmissionTimer.isOneShot()) {
             dbg(TRANSPORT_CHANNEL, "TCP starting on node %u\n", TOS_NODE_ID);
-            call RetransmissionTimer.startPeriodic(1024);
+            call RetransmissionTimer.startPeriodic(1024 + (uint16_t) (call Random.rand16()%1000));
         }
         // Iterate over sockets
             // If timeout -> retransmit
@@ -330,24 +390,32 @@ implementation{
     *    from the pass buffer. This may be shorter then bufflen
     */
     command uint16_t Transport.write(socket_t fd, uint8_t *buff, uint16_t bufflen) {
-        uint16_t bytesWritten = 0;
+        uint16_t bytesWritten = 0, data, maxAllowed;
         // Check for valid socket
         if(fd == 0 || fd > MAX_NUM_OF_SOCKETS || sockets[fd-1].state != ESTABLISHED) {
             return 0;
         }
         // Write all possible data to the given socket
-        while(bytesWritten < bufflen && sockets[fd-1].lastWritten != sockets[fd-1].lastAck-1) {
-            //dbg(TRANSPORT_CHANNEL, "Writing to buffer %u\n", *buff);
-            memcpy(&sockets[fd-1].sendBuff[sockets[fd-1].lastWritten], buff, 1);
-            buff++;
+        //dbg(TRANSPORT_CHANNEL, "lastSent %u lastWritten %u lastAck %u\n", sockets[fd-1].lastSent, sockets[fd-1].lastWritten, sockets[fd-1].lastAck);
+
+        while(bytesWritten < bufflen && calculateSendBufferSize(fd) > 0) {
+            //dbg(TRANSPORT_CHANNEL, "Send buffer size %u\n", calculateSendBufferSize(fd));
+            //dbg(TRANSPORT_CHANNEL, "lastWritten preincrement %u\n", sockets[fd-1].lastWritten);
+            memcpy(&sockets[fd-1].sendBuff[sockets[fd-1].lastWritten], buff+bytesWritten, 1);
+            //dbg(TRANSPORT_CHANNEL, "lastWritten 0 %u\n", sockets[fd-1].lastWritten);
             bytesWritten++;
             sockets[fd-1].lastWritten++;
-            if(sockets[fd-1].lastWritten == SOCKET_BUFFER_SIZE) {
+            //dbg(TRANSPORT_CHANNEL, "lastWritten postincrement %u\n", sockets[fd-1].lastWritten);
+            if((sockets[fd-1].lastWritten & 1) == 0) {
+                //dbg(TRANSPORT_CHANNEL, "Data written at %u to TCP buffer: %u\n", sockets[fd-1].lastWritten-2, ((uint16_t)sockets[fd-1].sendBuff[sockets[fd-1].lastWritten-1] << 8) | (uint16_t) sockets[fd-1].sendBuff[sockets[fd-1].lastWritten-2]);
+            }
+            if(sockets[fd-1].lastWritten >= SOCKET_BUFFER_SIZE && calculateSendBufferSize(fd) > 0) {
+                // dbg(TRANSPORT_CHANNEL, "Client: buffer wrap\n");
                 sockets[fd-1].lastWritten = 0;
             }
         }
-        if(bytesWritten > 0)
-            dbg(TRANSPORT_CHANNEL, "%u bytes written to buffer\n", bytesWritten);
+        //if(bytesWritten > 0)
+        //    dbg(TRANSPORT_CHANNEL, "%u bytes written to buffer\n", bytesWritten);
         // Return number of bytes written
         return bytesWritten;
     }
@@ -374,14 +442,15 @@ implementation{
                             sockets[fd-1].state = ESTABLISHED;
                         }
                     case ESTABLISHED:
-                        dbg(TRANSPORT_CHANNEL, "Receiving data on node %u\n", TOS_NODE_ID);/*
+                        //dbg(TRANSPORT_CHANNEL, "Receiving data on node %u\n", TOS_NODE_ID);
+                        /*
                         dbg(TRANSPORT_CHANNEL, "Data 1: %u\n", tcp_rcvd->payload[0]);
                         dbg(TRANSPORT_CHANNEL, "Data 2: %u\n", tcp_rcvd->payload[1]);
                         dbg(TRANSPORT_CHANNEL, "Length: %u\n", tcp_rcvd->length);*/
                         // Process data
-                        readInData(fd, tcp_rcvd);
-                        // Send ACK
-                        sendTCPPacket(fd, ACK, NULL);
+                        if(readInData(fd, tcp_rcvd))
+                            // Send ACK
+                            sendTCPPacket(fd, ACK, NULL);
                         return SUCCESS;
                 }
                 break;
@@ -398,9 +467,12 @@ implementation{
                         dbg(TRANSPORT_CHANNEL, "CONNECTION ESTABLISHED!\n");
                         return SUCCESS;
                     case ESTABLISHED:
-                        dbg(TRANSPORT_CHANNEL, "ACK received on node %u via port %u\n", TOS_NODE_ID, tcp_rcvd->destPort);
+                        //dbg(TRANSPORT_CHANNEL, "ACK received on node %u via port %u\n", TOS_NODE_ID, tcp_rcvd->destPort);
                         // Data ACK
                         sockets[fd-1].lastAck = sockets[fd-1].lastSent;
+                        ACKED = TRUE;
+                        STOP_AND_WAIT ^= 1;
+                        //dbg(TRANSPORT_CHANNEL, "lastAck %u\n", sockets[fd-1].lastAck);
                         return SUCCESS;
                     case FIN_WAIT_1:
                         // Set state
@@ -519,25 +591,46 @@ implementation{
     *    from the pass buffer. This may be shorter then bufflen
     */
     command uint16_t Transport.read(socket_t fd, uint8_t *buff, uint16_t bufflen) {
-        uint16_t bytesRead = 0;
+        uint16_t bytesRead = 0, data;
         // Check for valid socket
         if(fd == 0 || fd > MAX_NUM_OF_SOCKETS || sockets[fd-1].state != ESTABLISHED) {
             return 0;
         }
         // Read all possible data from the given socket
-        while(bytesRead < bufflen && sockets[fd-1].lastRead != sockets[fd-1].lastRcvd) {
-            //dbg(TRANSPORT_CHANNEL, "Reading from buffer\n");
-            //printSocket(fd);
-            //dbg(TRANSPORT_CHANNEL, "Data on read: %u\n", sockets[fd-1].rcvdBuff[sockets[fd-1].lastRead]);
-            memcpy(buff, &sockets[fd-1].rcvdBuff[sockets[fd-1].lastRead], 2);
+        //printSocket(fd);
+        // while(bytesRead < bufflen && sockets[fd-1].lastRead < sockets[fd-1].lastRcvd) {
+        //     //dbg(TRANSPORT_CHANNEL, "Odd lastRead\n");
+        //     //dbg(TRANSPORT_CHANNEL, "Server: lastRead: %u\n", sockets[fd-1].lastRead);
+        //     memcpy(buff, &sockets[fd-1].rcvdBuff[sockets[fd-1].lastRead], 1);
+        //     if((sockets[fd-1].lastRead & 1) == 0) {
+        //         data = ((uint16_t)*(buff-1) << 8) | (uint16_t)*(buff-2);
+        //         //dbg(TRANSPORT_CHANNEL, "Server: Data on read: %u\n", data);
+        //     }
+        //     buff++;
+        //     bytesRead++;
+        //     sockets[fd-1].lastRead++;
+        //     if(sockets[fd-1].lastRead == SOCKET_BUFFER_SIZE-1) {
+        //         sockets[fd-1].lastRead = 0;
+        //     }
+        // }
+
+        while(bytesRead < bufflen && calculateReceiveWindow(fd) > 0) {
+            memcpy(buff, &sockets[fd-1].rcvdBuff[sockets[fd-1].lastRead], 1);
             buff++;
-            buff++;
-            bytesRead += 2;
-            sockets[fd-1].lastRead += 2;
-            if(sockets[fd-1].lastRead == SOCKET_BUFFER_SIZE) {
+            bytesRead++;
+            sockets[fd-1].lastRead++;
+            // if((sockets[fd-1].lastRead & 1) == 0) {
+            //     data = ((uint16_t)*(buff-1) << 8) | (uint16_t)*(buff-2);
+            //     dbg(TRANSPORT_CHANNEL, "Server at %u: Data on read: %u\n", sockets[fd-1].lastRead, data);
+            // }
+            if(sockets[fd-1].lastRead >= SOCKET_BUFFER_SIZE && calculateReceiveWindow(fd) > 0) {
                 sockets[fd-1].lastRead = 0;
             }
         }
+
+
+        //dbg(TRANSPORT_CHANNEL, "Server: bytesRead: %u\n", bytesRead);
+        //dbg(TRANSPORT_CHANNEL, "Server: lastRead: %u\n", sockets[fd-1].lastRead);
         // Return number of bytes written
         return bytesRead;
     }
