@@ -179,7 +179,7 @@ implementation{
                 //dbg(TRANSPORT_CHANNEL, "Resetting received %u. Receive buffer size %u\n", sockets[fd-1].lastRcvd, calculateReceiveBufferSize(fd));
                 sockets[fd-1].lastRcvd = 0;
             } else if(sockets[fd-1].lastRcvd >= SOCKET_BUFFER_SIZE) {
-                dbg(TRANSPORT_CHANNEL, "Returning false down here. Can't fit packet\n");
+                dbg(TRANSPORT_CHANNEL, "Returning false down here. Can't fit packet.\n");
                 sockets[fd-1].lastRcvd -= bytesRead;
                 return FALSE;
             }
@@ -314,8 +314,8 @@ implementation{
                     case FIN_WAIT_1:
                     case LAST_ACK:
                         // Send FIN
+                        dbg(TRANSPORT_CHANNEL, "Resending last FIN\n");
                         sendTCPPacket(i+1, FIN, NULL, TRUE);
-                        dbg(TRANSPORT_CHANNEL, "CONNECTION CLOSED!\n");
                         break;
                     case TIME_WAIT:
                         sockets[i].state = CLOSED;
@@ -625,10 +625,14 @@ implementation{
                         sockets[fd-1].state = CLOSING;
                         return SUCCESS;
                     case FIN_WAIT_2:
+                    case TIME_WAIT:
                         // Send ACK
                         sendTCPPacket(fd, ACK, NULL, FALSE);
-                        // Set state
-                        sockets[fd-1].state = TIME_WAIT;
+                        // If not already in TIME_WAIT set state and new timeout
+                        if(sockets[fd-1].state != TIME_WAIT) {
+                            sockets[fd-1].state = TIME_WAIT;
+                            sockets[fd-1].RTO = call RetransmissionTimer.getNow() + (4 * sockets[fd-1].RTT);
+                        }
                         return SUCCESS;
                 }
                 break;

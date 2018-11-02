@@ -54,8 +54,9 @@ implementation{
                 server.bytesRead = 0;
                 server.bytesWritten = 0;                
                 call Transport.listen(server.sockfd);
-                if(!(call AppTimer.isRunning())
+                if(!(call AppTimer.isRunning())) {
                     call AppTimer.startPeriodic(1024 + (uint16_t) (call Random.rand16()%1000));
+                }
             }
         }
     }
