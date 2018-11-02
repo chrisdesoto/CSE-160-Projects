@@ -51,6 +51,7 @@ typedef struct socket_store_t {
     socket_addr_t src;
     socket_addr_t dest;
     uint8_t connectionQueue[MAX_NUM_OF_SOCKETS-1];
+    uint8_t stopAndWait;
 
     // This is the sender portion.
     uint8_t sendBuff[SOCKET_BUFFER_SIZE];
@@ -65,9 +66,9 @@ typedef struct socket_store_t {
     uint8_t lastRcvd;
     uint8_t nextExpected;
 
-    uint16_t RTT;
-    uint16_t RTO;
-    uint16_t RTX;
+    uint32_t RTT;
+    uint32_t RTO;
+    uint32_t RTX;
     uint8_t advertisedWindow;
     uint8_t effectiveWindow;
 }socket_store_t;

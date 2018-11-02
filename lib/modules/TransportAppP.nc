@@ -41,6 +41,8 @@ implementation{
 
     void handleServer();
     void handleClient();
+    void getServerBufferSize();
+    void getClientBufferSize();
 
     command void TransportApp.startServer(uint8_t port) {
         socket_addr_t addr;
@@ -119,17 +121,23 @@ implementation{
                 }
                 bytes += call Transport.read(server.conns[i], &server.buffer[server.bytesWritten], length);
                 server.bytesWritten += bytes;
-                //dbg(TRANSPORT_CHANNEL, "ServerApp: bytes read from socket %u\n", bytes);
+                /*dbg(TRANSPORT_CHANNEL, "ServerApp: bytes read from socket %u\n", bytes);
+                if((server.bytesWritten & 1) == 0) {
+                    data = (((uint16_t)server.buffer[server.bytesWritten-1]) << 8) | (uint16_t)server.buffer[server.bytesWritten-2];
+                    dbg(TRANSPORT_CHANNEL, "Data at %u: %u\n", server.bytesWritten, data);
+                }*/
                 if(server.bytesWritten == 1024) {
-                    dbg(TRANSPORT_CHANNEL, "ServerApp wrapping\n");
+                    //dbg(TRANSPORT_CHANNEL, "ServerApp wrapping\n");
                     server.bytesWritten = 0;
                 }
             }
         }
-        if(server.bytesWritten != server.bytesRead) {
+        if(server.bytesWritten >= server.bytesRead) {
+            //dbg(TRANSPORT_CHANNEL, "BytesWritten %u BytesRead %u\n", server.bytesWritten, server.bytesRead);
             while((((uint16_t)(server.bytesWritten - server.bytesRead)) >= 2) && ((1024 - server.bytesRead) >= 2)) {
                 if(!isRead) {
-                    dbg(TRANSPORT_CHANNEL, "Reading Data:");
+                    // dbg(TRANSPORT_CHANNEL, "BytesWritten %u BytesRead %u\n", server.bytesWritten, server.bytesRead);
+                    dbg(TRANSPORT_CHANNEL, "Reading Data at %u: ", server.bytesRead);
                     isRead = TRUE;
                 }
                 //printf("|%u|", server.bytesRead);
@@ -184,7 +192,7 @@ implementation{
             } else {
                 client.buffer[client.bytesWritten] = client.counter >> 8;
                 client.counter++;
-                dbg(TRANSPORT_CHANNEL, "Client writing data: %u\n", (uint16_t)client.buffer[client.bytesWritten] << 8 | (uint16_t)client.buffer[client.bytesWritten-1]);
+                //dbg(TRANSPORT_CHANNEL, "Client writing data: %u\n", (uint16_t)client.buffer[client.bytesWritten] << 8 | (uint16_t)client.buffer[client.bytesWritten-1]);
             }
             client.bytesWritten++;
             if(client.bytesWritten == 1024 && ((1024 - client.bytesWritten) + client.bytesTransferred) > 0) {
