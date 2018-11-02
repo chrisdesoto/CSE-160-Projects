@@ -280,20 +280,24 @@ implementation{
             // If timeout -> retransmit
             // If ESTABLISHED -> attempt to send packets
         for(i = 0; i < MAX_NUM_OF_SOCKETS; i++) {
-            if(sockets[i].RTO < call RetransmissionTimer.getNow() && sockets[i].lastSent != sockets[i].lastAck && sockets[i].type == CLIENT) {
+            if(sockets[i].RTO < call RetransmissionTimer.getNow()) {
                 //dbg(TRANSPORT_CHANNEL, "Retransmitting!\n");
                 switch(sockets[i].state) {
                     case ESTABLISHED:
-                        dbg(TRANSPORT_CHANNEL, "Resending packets\n");
-                        // Move pointer back to last acked
-                        //dbg(TRANSPORT_CHANNEL, "lastSent %u\n", sockets[i].lastSent);
-                        sockets[i].lastSent = sockets[i].lastAck;
-                        //dbg(TRANSPORT_CHANNEL, "lastAck %u\n", sockets[i].lastAck);
-                        dbg(TRANSPORT_CHANNEL, "Resending at %u\n", (((uint16_t)sockets[i].sendBuff[sockets[i].lastSent+1]) << 8) | (uint16_t)sockets[i].sendBuff[sockets[i].lastSent]);
-                        // Resend data
-                        sendTCPPacket(i+1, DATA, NULL, TRUE);
-                        continue;
+                        if(sockets[i].lastSent != sockets[i].lastAck && sockets[i].type == CLIENT) {
+                            //dbg(TRANSPORT_CHANNEL, "Resending packets\n");
+                            // Move pointer back to last acked
+                            //dbg(TRANSPORT_CHANNEL, "lastSent %u\n", sockets[i].lastSent);
+                            sockets[i].lastSent = sockets[i].lastAck;
+                            //dbg(TRANSPORT_CHANNEL, "lastAck %u\n", sockets[i].lastAck);
+                            dbg(TRANSPORT_CHANNEL, "Resending at %u\n", (((uint16_t)sockets[i].sendBuff[sockets[i].lastSent+1]) << 8) | (uint16_t)sockets[i].sendBuff[sockets[i].lastSent]);
+                            // Resend data
+                            sendTCPPacket(i+1, DATA, NULL, TRUE);
+                            continue;
+                        }
+                        break;
                     case SYN_SENT:
+                        dbg(TRANSPORT_CHANNEL, "Resending SYN\n");
                         // Send SYN
                         sendTCPPacket(i+1, SYN, NULL, TRUE);
                         break;
@@ -301,13 +305,21 @@ implementation{
                         // Send SYN_ACK
                         sendTCPPacket(i+1, SYN_ACK, NULL, TRUE);
                         break;
+                    case CLOSE_WAIT:
+                        dbg(TRANSPORT_CHANNEL, "Sending last FIN.\n");
+                        sendTCPPacket(i+1, FIN, NULL, TRUE);                        
+                        dbg(TRANSPORT_CHANNEL, "Going to LAST_ACK.\n");
+                        sockets[i].state = LAST_ACK;
+                        break;
                     case FIN_WAIT_1:
                     case LAST_ACK:
                         // Send FIN
                         sendTCPPacket(i+1, FIN, NULL, TRUE);
+                        dbg(TRANSPORT_CHANNEL, "CONNECTION CLOSED!\n");
                         break;
                     case TIME_WAIT:
                         sockets[i].state = CLOSED;
+                        dbg(TRANSPORT_CHANNEL, "CONNECTION CLOSED!\n");
                 }
             }
             if(sockets[i].state == ESTABLISHED) {
@@ -478,9 +490,12 @@ implementation{
                 fd = findSocket(TOS_NODE_ID, tcp_rcvd->destPort, src, tcp_rcvd->srcPort);
                 switch(sockets[fd-1].state) {
                     case SYN_RCVD:
-                        if(tcp_rcvd->ack == sockets[fd-1].nextExpected) {
-                            sockets[fd-1].state = ESTABLISHED;
-                        }
+                        // if(tcp_rcvd->ack == sockets[fd-1].nextExpected) {
+                        //     dbg(TRANSPORT_CHANNEL, "CONNECTION ESTABLISHED!\n");
+                        //     sockets[fd-1].state = ESTABLISHED;
+                        // }
+                        dbg(TRANSPORT_CHANNEL, "CONNECTION ESTABLISHED!\n");
+                        sockets[fd-1].state = ESTABLISHED;
                     case ESTABLISHED:
                         //dbg(TRANSPORT_CHANNEL, "Receiving data on node %u\n", TOS_NODE_ID);
                         /*
@@ -523,6 +538,7 @@ implementation{
                         //dbg(TRANSPORT_CHANNEL, "lastAck %u\n", sockets[fd-1].lastAck);
                         return SUCCESS;
                     case FIN_WAIT_1:
+                        dbg(TRANSPORT_CHANNEL, "ACK received on node %u via port %u. Going to FIN_WAIT_2.\n", TOS_NODE_ID, tcp_rcvd->destPort);
                         // Set state
                         sockets[fd-1].state = FIN_WAIT_2;
                         return SUCCESS;
@@ -531,9 +547,11 @@ implementation{
                         sockets[fd-1].state = TIME_WAIT;
                         return SUCCESS;
                     case LAST_ACK:
+                        dbg(TRANSPORT_CHANNEL, "Received last ack. ZEROing socket.\n");
                         zeroSocket(fd);
                         // Set state
                         sockets[fd-1].state = CLOSED;
+                        dbg(TRANSPORT_CHANNEL, "CONNECTION CLOSED!\n");
                         return SUCCESS;
                 }
                 break;
@@ -588,10 +606,15 @@ implementation{
             case FIN:
                 // Look up the socket
                 fd = findSocket(TOS_NODE_ID, tcp_rcvd->destPort, src, tcp_rcvd->srcPort);
+                dbg(TRANSPORT_CHANNEL, "FIN Received\n");
                 switch(sockets[fd-1].state) {
                     case ESTABLISHED:
+                        dbg(TRANSPORT_CHANNEL, "Going to CLOSE_WAIT.\n");
                         // Send ACK
+                        dbg(TRANSPORT_CHANNEL, "Sending ACK.\n");
                         sendTCPPacket(fd, ACK, NULL, FALSE);
+                        sockets[fd-1].RTX = call RetransmissionTimer.getNow();
+                        calculateRTO(fd);
                         // Set state
                         sockets[fd-1].state = CLOSE_WAIT;
                         return SUCCESS;
@@ -760,18 +783,20 @@ implementation{
                 return SUCCESS;
             case ESTABLISHED:
             case SYN_RCVD:
+                dbg(TRANSPORT_CHANNEL, "Sending FIN\n");
                 // Initiate FIN sequence
                 sendTCPPacket(fd, FIN, NULL, FALSE);
                 // Set timeout
-                sockets[fd-1].RTO = call RetransmissionTimer.getNow() + 2*sockets[fd-1].RTT;
+                //sockets[fd-1].RTO = call RetransmissionTimer.getNow() + 2*sockets[fd-1].RTT;
                 // Set FIN_WAIT_1
+                dbg(TRANSPORT_CHANNEL, "Going to FIN_WAIT_1\n");
                 sockets[fd-1].state = FIN_WAIT_1;
                 return SUCCESS;
             case CLOSE_WAIT:
                 // Continue FIN sequence
                 sendTCPPacket(fd, FIN, NULL, FALSE);
                 // Set timeout
-                sockets[fd-1].RTO = call RetransmissionTimer.getNow() + 2*sockets[fd-1].RTT;
+                //sockets[fd-1].RTO = call RetransmissionTimer.getNow() + 2*sockets[fd-1].RTT;
                 // Set LAST_ACK
                 sockets[fd-1].state = LAST_ACK;
                 return SUCCESS;

@@ -119,10 +119,13 @@ implementation {
         call Transport.connect(fd, &destAddr);
         */
         call TransportApp.startClient(dest, srcPort, destPort, transfer);
-        dbg(TRANSPORT_CHANNEL, "Node %u creating connection from port %u to port %u on node %u. Transferring bytes: %u\n", TOS_NODE_ID, srcPort, dest, destPort, transfer);
+        dbg(TRANSPORT_CHANNEL, "Node %u creating connection from port %u to port %u on node %u. Transferring bytes: %u\n", TOS_NODE_ID, srcPort, destPort, dest, transfer);
     }
 
-    event void CommandHandler.setClientClose(uint8_t dest, uint8_t srcPort, uint8_t destPort) {}
+    event void CommandHandler.setClientClose(uint8_t dest, uint8_t srcPort, uint8_t destPort) {
+        dbg(TRANSPORT_CHANNEL, "Node %u closing connection from port %u to port %u on node %u.\n", TOS_NODE_ID, srcPort, destPort, dest);
+        call TransportApp.closeClient(dest, srcPort, destPort);
+    }
 
     event void CommandHandler.setAppServer() {}
 

@@ -50,11 +50,12 @@ implementation{
         if(server.sockfd > 0) {
             addr.addr = TOS_NODE_ID;
             addr.port = port;
-            if(call Transport.bind(server.sockfd, &addr) == SUCCESS && !(call AppTimer.isRunning())) {
+            if(call Transport.bind(server.sockfd, &addr) == SUCCESS) {
                 server.bytesRead = 0;
                 server.bytesWritten = 0;                
                 call Transport.listen(server.sockfd);
-                call AppTimer.startPeriodic(1024 + (uint16_t) (call Random.rand16()%1000));
+                if(!(call AppTimer.isRunning())
+                    call AppTimer.startPeriodic(1024 + (uint16_t) (call Random.rand16()%1000));
             }
         }
     }
@@ -89,7 +90,7 @@ implementation{
     }
 
     command void TransportApp.closeClient(uint8_t srcPort, uint8_t destPort, uint8_t dest) {
-
+        call Transport.close(client.sockfd);
     }
 
     event void AppTimer.fired() {
