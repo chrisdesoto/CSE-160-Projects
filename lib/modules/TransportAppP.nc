@@ -139,8 +139,8 @@ implementation{
             // Set up some state for the connection
             client[i].transfer = transfer;
             client[i].counter = 0;
-            client[i].bytesWritten = 950;
-            client[i].bytesTransferred = 950;
+            client[i].bytesWritten = 0;
+            client[i].bytesTransferred = 0;
             // Start the timer if it isn't running
             if(!(call AppTimer.isRunning())) {
                 call AppTimer.startPeriodic(1024 + (uint16_t) (call Random.rand16()%1000));
@@ -226,7 +226,7 @@ implementation{
             if(client[i].sockfd == 0)
                 continue;
             // Writing to buffer
-            while(getClientBufferAvailable(i) > 0 && client[i].counter < client[i].transfer) {
+            while(getClientBufferAvailable(i) > 1 && client[i].counter < client[i].transfer) {
                 if(client[i].bytesWritten == TCP_APP_BUFFER_SIZE) {
                     client[i].bytesWritten = 0;
                 }

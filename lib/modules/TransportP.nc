@@ -674,9 +674,6 @@ implementation{
             //     data = ((uint16_t)*(buff-1) << 8) | (uint16_t)*(buff-2);
             //     dbg(TRANSPORT_CHANNEL, "Server at %u: Data on read: %u\n", sockets[fd-1].lastRead, data);
             // }
-            /*if(sockets[fd-1].lastRead >= SOCKET_BUFFER_SIZE && calculateReceiveWindow(fd) > 0) {
-                sockets[fd-1].lastRead = 0;
-            }*/
         }
         //dbg(TRANSPORT_CHANNEL, "Server: bytesRead: %u\n", bytesRead);
         //dbg(TRANSPORT_CHANNEL, "Server: lastRead: %u\n", sockets[fd-1].lastRead);
@@ -805,6 +802,7 @@ implementation{
     *   to listen else FAIL.
     */
     command error_t Transport.listen(socket_t fd) {        
+        // Check for valid socket
         if(fd == 0 || fd > MAX_NUM_OF_SOCKETS) {
             return FAIL;
         }
