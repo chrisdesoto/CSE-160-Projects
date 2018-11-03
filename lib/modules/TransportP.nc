@@ -155,14 +155,12 @@ implementation{
     bool readInData(uint8_t fd, tcp_pack* tcp_rcvd) {
         uint16_t i = 0, bytesRead = 0;
         if(calculateReceiveBufferSize(fd) < tcp_rcvd->length) {
-            dbg(TRANSPORT_CHANNEL, "Returning false. Can't fit packet.\n");
-            //dbg(TRANSPORT_CHANNEL, "Returning false. Can't fit packet\n");
-            //dbg(TRANSPORT_CHANNEL, "Returning false. Can't fit packet\n");
+            dbg(TRANSPORT_CHANNEL, "Dropping packet. Can't fit data in buffer.\n");
             // dbg(TRANSPORT_CHANNEL, "%u\n", ((tcp_rcvd->payload[i] & 0xFF) << 8) | tcp_rcvd->payload[i] >> 8);
             return FALSE;
         }
         if(sockets[fd-1].stopAndWait == tcp_rcvd->seq) {
-            dbg(TRANSPORT_CHANNEL, "Incorrect seq num. Re-ACKing packet.\n");
+            dbg(TRANSPORT_CHANNEL, "Incorrect sequence number. Resending ACK packet.\n");
             sendTCPPacket(fd, ACK, NULL, FALSE);
             return FALSE;
         }
@@ -322,7 +320,7 @@ implementation{
                         dbg(TRANSPORT_CHANNEL, "CONNECTION CLOSED!\n");
                 }
             }
-            if(sockets[i].state == ESTABLISHED) {
+            if(sockets[i].state == ESTABLISHED && calculateSendWindow(i+1) > 0) {
                 // Send data
                 if(sockets[i].type == CLIENT) {
                     sendTCPPacket(i+1, DATA, NULL, FALSE);
@@ -497,19 +495,10 @@ implementation{
                         dbg(TRANSPORT_CHANNEL, "CONNECTION ESTABLISHED!\n");
                         sockets[fd-1].state = ESTABLISHED;
                     case ESTABLISHED:
-                        //dbg(TRANSPORT_CHANNEL, "Receiving data on node %u\n", TOS_NODE_ID);
-                        /*
-                        dbg(TRANSPORT_CHANNEL, "Data 1: %u\n", tcp_rcvd->payload[0]);
-                        dbg(TRANSPORT_CHANNEL, "Data 2: %u\n", tcp_rcvd->payload[1]);
-                        dbg(TRANSPORT_CHANNEL, "Length: %u\n", tcp_rcvd->length);*/
-                        // Process data
                         //dbg(TRANSPORT_CHANNEL, "Data received on node %u via port %u\n", TOS_NODE_ID, tcp_rcvd->destPort);
                         if(readInData(fd, tcp_rcvd))
                             // Send ACK
                             sendTCPPacket(fd, ACK, NULL, FALSE);
-                        else {
-
-                        }
                         return SUCCESS;
                 }
                 break;
@@ -673,26 +662,10 @@ implementation{
             return 0;
         }
         // Read all possible data from the given socket
-        //printSocket(fd);
-        // while(bytesRead < bufflen && sockets[fd-1].lastRead < sockets[fd-1].lastRcvd) {
-        //     //dbg(TRANSPORT_CHANNEL, "Odd lastRead\n");
-        //     //dbg(TRANSPORT_CHANNEL, "Server: lastRead: %u\n", sockets[fd-1].lastRead);
-        //     memcpy(buff, &sockets[fd-1].rcvdBuff[sockets[fd-1].lastRead], 1);
-        //     if((sockets[fd-1].lastRead & 1) == 0) {
-        //         data = ((uint16_t)*(buff-1) << 8) | (uint16_t)*(buff-2);
-        //         //dbg(TRANSPORT_CHANNEL, "Server: Data on read: %u\n", data);
-        //     }
-        //     buff++;
-        //     bytesRead++;
-        //     sockets[fd-1].lastRead++;
-        //     if(sockets[fd-1].lastRead == SOCKET_BUFFER_SIZE-1) {
-        //         sockets[fd-1].lastRead = 0;
-        //     }
-        // }
-        if(sockets[fd-1].lastRead >= SOCKET_BUFFER_SIZE && calculateReceiveWindow(fd) > 0) {
-            sockets[fd-1].lastRead = 0;
-        }
         while(bytesRead < bufflen && calculateReceiveWindow(fd) > 0) {
+            if(sockets[fd-1].lastRead >= SOCKET_BUFFER_SIZE) {
+                sockets[fd-1].lastRead = 0;
+            }
             memcpy(buff, &sockets[fd-1].rcvdBuff[sockets[fd-1].lastRead], 1);
             buff++;
             bytesRead++;
@@ -701,12 +674,10 @@ implementation{
             //     data = ((uint16_t)*(buff-1) << 8) | (uint16_t)*(buff-2);
             //     dbg(TRANSPORT_CHANNEL, "Server at %u: Data on read: %u\n", sockets[fd-1].lastRead, data);
             // }
-            if(sockets[fd-1].lastRead >= SOCKET_BUFFER_SIZE && calculateReceiveWindow(fd) > 0) {
+            /*if(sockets[fd-1].lastRead >= SOCKET_BUFFER_SIZE && calculateReceiveWindow(fd) > 0) {
                 sockets[fd-1].lastRead = 0;
-            }
+            }*/
         }
-
-
         //dbg(TRANSPORT_CHANNEL, "Server: bytesRead: %u\n", bytesRead);
         //dbg(TRANSPORT_CHANNEL, "Server: lastRead: %u\n", sockets[fd-1].lastRead);
         // Return number of bytes written
@@ -790,8 +761,6 @@ implementation{
                 dbg(TRANSPORT_CHANNEL, "Sending FIN\n");
                 // Initiate FIN sequence
                 sendTCPPacket(fd, FIN, NULL, FALSE);
-                // Set timeout
-                //sockets[fd-1].RTO = call RetransmissionTimer.getNow() + 2*sockets[fd-1].RTT;
                 // Set FIN_WAIT_1
                 dbg(TRANSPORT_CHANNEL, "Going to FIN_WAIT_1\n");
                 sockets[fd-1].state = FIN_WAIT_1;
@@ -799,8 +768,6 @@ implementation{
             case CLOSE_WAIT:
                 // Continue FIN sequence
                 sendTCPPacket(fd, FIN, NULL, FALSE);
-                // Set timeout
-                //sockets[fd-1].RTO = call RetransmissionTimer.getNow() + 2*sockets[fd-1].RTT;
                 // Set LAST_ACK
                 sockets[fd-1].state = LAST_ACK;
                 return SUCCESS;
