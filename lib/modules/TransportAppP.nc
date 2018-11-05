@@ -226,7 +226,7 @@ implementation{
             if(client[i].sockfd == 0)
                 continue;
             // Writing to buffer
-            while(getClientBufferAvailable(i) > 1 && client[i].counter < client[i].transfer) {
+            while(getClientBufferAvailable(i) > 0 && client[i].counter < client[i].transfer) {
                 if(client[i].bytesWritten == TCP_APP_BUFFER_SIZE) {
                     client[i].bytesWritten = 0;
                 }
@@ -279,7 +279,7 @@ implementation{
     }
 
     uint16_t getServerBufferAvailable(uint8_t idx) {
-        return TCP_APP_BUFFER_SIZE - getServerBufferOccupied(idx);
+        return TCP_APP_BUFFER_SIZE - getServerBufferOccupied(idx) - 1;
     }
 
 
@@ -294,7 +294,7 @@ implementation{
     }
 
     uint16_t getClientBufferAvailable(uint8_t idx) {
-        return TCP_APP_BUFFER_SIZE - getClientBufferOccupied(idx);
+        return TCP_APP_BUFFER_SIZE - getClientBufferOccupied(idx) - 1;
     }
 
     uint16_t min(uint16_t a, uint16_t b) {

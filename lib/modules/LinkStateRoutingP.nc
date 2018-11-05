@@ -229,11 +229,7 @@ implementation {
         uint16_t count = numKnownNodes;
         for(i = 0; i < LS_MAX_ROUTES; i++) {
             cost[i] = LS_MAX_COST;
-        }
-        for(i = 0; i < LS_MAX_ROUTES; i++) {
             prev[i] = 0;
-        }
-        for(i = 0; i < LS_MAX_ROUTES; i++) {
             visited[i] = FALSE;
         }
         cost[currentNode] = 0;
