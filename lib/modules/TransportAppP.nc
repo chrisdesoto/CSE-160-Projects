@@ -79,8 +79,8 @@ implementation{
                     connId = ((uint32_t)addr.addr << 24) | ((uint32_t)addr.port << 16);
                     call ConnectionMap.insert(connId, i+1);
                     // Set up some state for the connection
-                    server[i].bytesRead = 950;
-                    server[i].bytesWritten = 950;
+                    server[i].bytesRead = 0;
+                    server[i].bytesWritten = 0;
                     server[i].numConns = 0;
                     // Listen on the port and start a timer if needed
                     if(call Transport.listen(server[i].sockfd) == SUCCESS && !(call AppTimer.isRunning())) {
