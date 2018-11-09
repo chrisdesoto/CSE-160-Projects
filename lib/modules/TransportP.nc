@@ -213,13 +213,14 @@ implementation{
             sockets[fd-1].rcvdBuff[i] = 0;
         }
         sockets[fd-1].stopAndWait = (uint8_t)(call Random.rand16()%256);
-        sockets[fd-1].lastWritten = 0;
-        sockets[fd-1].lastAck = 0;
-        sockets[fd-1].lastSent = 0;
-        sockets[fd-1].sendSize = 0;
-        sockets[fd-1].lastRead = 0;
-        sockets[fd-1].lastRcvd = 0;
-        sockets[fd-1].nextExpected = 0;
+        i = (uint8_t)(call Random.rand16()%128);
+        sockets[fd-1].lastWritten = i;
+        sockets[fd-1].lastAck = i;
+        sockets[fd-1].lastSent = i;
+        i = (uint8_t)(call Random.rand16()%128);
+        sockets[fd-1].lastRead = i;
+        sockets[fd-1].lastRcvd = i;
+        sockets[fd-1].nextExpected = i;
         sockets[fd-1].RTT = TCP_INITIAL_RTT;
         sockets[fd-1].advertisedWindow = 0;
         sockets[fd-1].effectiveWindow = 0;
@@ -545,23 +546,31 @@ implementation{
                 break;
             case SYN:
                 fd = findSocket(TOS_NODE_ID, tcp_rcvd->destPort, 0, 0);
+                if(fd == 0)
+                    break;
+                switch(sockets[fd-1].state) {
+                    case LISTEN:
+                        dbg(TRANSPORT_CHANNEL, "SYN recieved on node %u via port %u with seq %u\n", TOS_NODE_ID, tcp_rcvd->destPort, tcp_rcvd->seq);
+                        // Create new active socket
+                        newFd = cloneSocket(fd, package->src, tcp_rcvd->srcPort);
+                        if(newFd > 0) {
+                            // Add new connection to fd connection queue
+                            addConnection(fd, newFd);
+                            // Set state
+                            sockets[newFd-1].state = SYN_RCVD;
+                            sockets[newFd-1].lastRead = tcp_rcvd->seq;
+                            sockets[newFd-1].lastRcvd = tcp_rcvd->seq;
+                            sockets[newFd-1].nextExpected = tcp_rcvd->seq+1;
+                            // Send SYN_ACK
+                            sendTCPPacket(newFd, SYN_ACK, NULL, FALSE);
+                            dbg(TRANSPORT_CHANNEL, "SYN_ACK sent on node %u via port %u\n", TOS_NODE_ID, tcp_rcvd->destPort);
+                            // Add the new fd to the socket map
+                            socketId = (((uint32_t)TOS_NODE_ID) << 24) | (((uint32_t)tcp_rcvd->destPort) << 16) | (((uint32_t)src) << 8) | (((uint32_t)tcp_rcvd->srcPort));
+                            call SocketMap.insert(socketId, newFd);
+                            return SUCCESS;
+                        }
+                }
                 if(fd > 0 && sockets[fd-1].state == LISTEN) {
-                    dbg(TRANSPORT_CHANNEL, "SYN recieved on node %u via port %u with seq %u\n", TOS_NODE_ID, tcp_rcvd->destPort, tcp_rcvd->seq);
-                    // Create new active socket
-                    newFd = cloneSocket(fd, package->src, tcp_rcvd->srcPort);
-                    if(newFd > 0) {
-                        // Add new connection to fd connection queue
-                        addConnection(fd, newFd);
-                        // Send SYN_ACK
-                        sendTCPPacket(newFd, SYN_ACK, NULL, FALSE);
-                        dbg(TRANSPORT_CHANNEL, "SYN_ACK sent on node %u via port %u\n", TOS_NODE_ID, tcp_rcvd->destPort);
-                        // Set state
-                        sockets[newFd-1].state = SYN_RCVD;
-                        // Add the new fd to the socket map
-                        socketId = (((uint32_t)TOS_NODE_ID) << 24) | (((uint32_t)tcp_rcvd->destPort) << 16) | (((uint32_t)src) << 8) | (((uint32_t)tcp_rcvd->srcPort));
-                        call SocketMap.insert(socketId, newFd);
-                        return SUCCESS;
-                    }
                 } else {
                     // Look up the active socket
                     fd = findSocket(TOS_NODE_ID, tcp_rcvd->destPort, src, tcp_rcvd->srcPort);
