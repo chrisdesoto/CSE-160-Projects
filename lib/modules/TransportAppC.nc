@@ -30,4 +30,7 @@ implementation {
 
     components TransportC as Transport;
     TransportAppP.Transport -> Transport;
+
+    components new HashmapC(uint8_t, 20);
+    TransportAppP.ConnectionMap -> HashmapC;
 }

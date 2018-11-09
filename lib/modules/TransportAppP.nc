@@ -7,6 +7,9 @@
 #include "../../includes/packet.h"
 #include "../../includes/protocol.h"
 
+#define TCP_APP_BUFFER_SIZE 1024
+#define TCP_APP_READ_SIZE 10
+
 module TransportAppP{
     provides interface TransportApp;
 
@@ -14,6 +17,7 @@ module TransportAppP{
     uses interface Random;
     uses interface Timer<TMilli> as AppTimer;
     uses interface Transport;
+    uses interface Hashmap<uint8_t> as ConnectionMap;
 }
 
 implementation{
@@ -22,9 +26,9 @@ implementation{
         uint8_t sockfd;
         uint8_t conns[MAX_NUM_OF_SOCKETS-1];
         uint8_t numConns;
-        uint8_t buffer[1024];
         uint16_t bytesRead;
         uint16_t bytesWritten;
+        uint8_t buffer[TCP_APP_BUFFER_SIZE];
     } server_t;
 
     typedef struct client_t {
@@ -33,64 +37,133 @@ implementation{
         uint16_t bytesTransferred;
         uint16_t counter;
         uint16_t transfer;
-        uint8_t buffer[1024];
+        uint8_t buffer[TCP_APP_BUFFER_SIZE];
     } client_t;
 
-    server_t server;
-    client_t client;
+    server_t server[MAX_NUM_OF_SOCKETS];
+    client_t client[MAX_NUM_OF_SOCKETS];
+    uint8_t numServers = 0;
+    uint8_t numClients = 0;
 
     void handleServer();
     void handleClient();
-    void getServerBufferSize();
-    void getClientBufferSize();
+    uint16_t getServerBufferOccupied(uint8_t idx);
+    uint16_t getServerBufferAvailable(uint8_t idx);
+    uint16_t getClientBufferOccupied(uint8_t idx);
+    uint16_t getClientBufferAvailable(uint8_t idx);
+    void zeroClient(uint8_t idx);
+    void zeroServer(uint8_t idx);
+    uint16_t min(uint16_t a, uint16_t b);
 
     command void TransportApp.startServer(uint8_t port) {
+        uint8_t i;
+        uint32_t connId;
         socket_addr_t addr;
-        server.sockfd = call Transport.socket();
-        if(server.sockfd > 0) {
-            addr.addr = TOS_NODE_ID;
-            addr.port = port;
-            if(call Transport.bind(server.sockfd, &addr) == SUCCESS) {
-                server.bytesRead = 0;
-                server.bytesWritten = 0;                
-                call Transport.listen(server.sockfd);
-                if(!(call AppTimer.isRunning())
-                    call AppTimer.startPeriodic(1024 + (uint16_t) (call Random.rand16()%1000));
+        if(numServers >= MAX_NUM_OF_SOCKETS) {
+            dbg(TRANSPORT_CHANNEL, "Cannot start server\n");
+            return;
+        }
+        for(i = 0; i < MAX_NUM_OF_SOCKETS; i++) {
+            // Skip occupied server structs
+            if(server[i].sockfd != 0)
+                continue;
+            // Open a socket
+            server[i].sockfd = call Transport.socket();
+            if(server[i].sockfd > 0) {
+                // Set up some structs
+                addr.addr = TOS_NODE_ID;
+                addr.port = port;
+                // Bind the socket to the src address
+                if(call Transport.bind(server[i].sockfd, &addr) == SUCCESS) {
+                    // Add the bound socket index to the connection map
+                    connId = ((uint32_t)addr.addr << 24) | ((uint32_t)addr.port << 16);
+                    call ConnectionMap.insert(connId, i+1);
+                    // Set up some state for the connection
+                    server[i].bytesRead = 0;
+                    server[i].bytesWritten = 0;
+                    server[i].numConns = 0;
+                    // Listen on the port and start a timer if needed
+                    if(call Transport.listen(server[i].sockfd) == SUCCESS && !(call AppTimer.isRunning())) {
+                        call AppTimer.startPeriodic(1024 + (uint16_t) (call Random.rand16()%1000));
+                    }
+                    numServers++;
+                    return;
+                }
             }
         }
     }
 
     command void TransportApp.startClient(uint8_t dest, uint8_t srcPort, uint8_t destPort, uint16_t transfer) {
+        uint8_t i;
+        uint32_t connId;
         socket_addr_t clientAddr;
         socket_addr_t serverAddr;
+        // Check if there is available space
+        if(numClients >= MAX_NUM_OF_SOCKETS) {
+            dbg(TRANSPORT_CHANNEL, "Cannot start client\n");
+            return;
+        }
+        // Set up some structs
         clientAddr.addr = TOS_NODE_ID;
         clientAddr.port = srcPort;
         serverAddr.addr = dest;
         serverAddr.port = destPort;
-        client.sockfd = call Transport.socket();
-        if(client.sockfd == 0) {
-            dbg(TRANSPORT_CHANNEL, "No available sockets. Exiting!");
+        for(i = 0; i < MAX_NUM_OF_SOCKETS; i++) {
+            // Skip occupied client structs
+            if(client[i].sockfd != 0) {
+                continue;
+            }
+            // Open a socket
+            client[i].sockfd = call Transport.socket();
+            if(client[i].sockfd == 0) {
+                dbg(TRANSPORT_CHANNEL, "No available sockets. Exiting!");
+                return;
+            }
+            // Bind the socket to the src address
+            if(call Transport.bind(client[i].sockfd, &clientAddr) == FAIL) {
+                dbg(TRANSPORT_CHANNEL, "Failed to bind sockets. Exiting!");
+                return;
+            }
+            // Add the bound socket index to the connection map
+            connId = ((uint32_t)TOS_NODE_ID << 24) | ((uint32_t)srcPort << 16);
+            call ConnectionMap.insert(connId, i+1);
+            // Connect to the remote server
+            if(call Transport.connect(client[i].sockfd, &serverAddr) == FAIL) {
+                dbg(TRANSPORT_CHANNEL, "Failed to connect to server. Exiting!");
+                return;
+            }
+            // Remove the old connection and add the newly connected socket index
+            call ConnectionMap.remove(connId);
+            connId = ((uint32_t)TOS_NODE_ID << 24) | ((uint32_t)srcPort << 16) | ((uint32_t)dest << 16) | ((uint32_t)destPort << 16);
+            call ConnectionMap.insert(connId, i+1);
+            // Set up some state for the connection
+            client[i].transfer = transfer;
+            client[i].counter = 0;
+            client[i].bytesWritten = 0;
+            client[i].bytesTransferred = 0;
+            // Start the timer if it isn't running
+            if(!(call AppTimer.isRunning())) {
+                call AppTimer.startPeriodic(1024 + (uint16_t) (call Random.rand16()%1000));
+            }
+            numClients++;
             return;
-        }
-        if(call Transport.bind(client.sockfd, &clientAddr) == FAIL) {
-            dbg(TRANSPORT_CHANNEL, "Failed to bind sockets. Exiting!");
-            return;
-        }
-        if(call Transport.connect(client.sockfd, &serverAddr) == FAIL) {
-            dbg(TRANSPORT_CHANNEL, "Failed to connect to server. Exiting!");
-            return;
-        }
-        client.transfer = transfer;
-        client.counter = 0;
-        client.bytesWritten = 0;
-        client.bytesTransferred = 0;
-        if(!(call AppTimer.isRunning())) {
-            call AppTimer.startPeriodic(5000 + (uint16_t) (call Random.rand16()%1000));
         }
     }
 
     command void TransportApp.closeClient(uint8_t srcPort, uint8_t destPort, uint8_t dest) {
-        call Transport.close(client.sockfd);
+        uint32_t sockIdx, connId;
+        // Find the correct socket index
+        connId = ((uint32_t)TOS_NODE_ID << 24) | ((uint32_t)srcPort << 16) | ((uint32_t)dest << 16) | ((uint32_t)destPort << 16);
+        sockIdx = call ConnectionMap.get(connId);
+        if(sockIdx == 0) {
+            dbg(TRANSPORT_CHANNEL, "Client not found\n");
+            return;
+        }
+        // Close the socket
+        call Transport.close(client[sockIdx-1].sockfd);
+        // Zero the client & decrement connections
+        zeroClient(sockIdx-1);
+        numClients--;
     }
 
     event void AppTimer.fired() {
@@ -99,56 +172,46 @@ implementation{
     }
 
     void handleServer() {
-        uint8_t i, counter = 10, bytes = 0;
-        uint8_t newFd = call Transport.accept(server.sockfd);
+        uint8_t i, j, counter = 10, bytes = 0;
+        uint8_t newFd;
         uint16_t data, length;
         bool isRead = FALSE;
-        if(newFd > 0) {
-            if(server.numConns < MAX_NUM_OF_SOCKETS-1) {
-                server.conns[server.numConns++] = newFd;
+        for(i = 0; i < numServers; i++) {
+            if(server[i].sockfd == 0) {
+                continue;
             }
-        }
-        /*
-        if(server.sockfd > 0) {
-            dbg(TRANSPORT_CHANNEL, "ServerApp: bytesWritten %u\n", server.bytesWritten);
-            dbg(TRANSPORT_CHANNEL, "ServerApp: bytesRead %u\n", server.bytesRead);
-        }
-        */
-        for(i = 0; i < server.numConns; i++) {
-            length = 10;
-            if(server.conns[i] != 0) {
-                if(length > (1024 - server.bytesWritten)) {
-                    length = 1024 - server.bytesWritten;
-                }
-                bytes += call Transport.read(server.conns[i], &server.buffer[server.bytesWritten], length);
-                server.bytesWritten += bytes;
-                /*dbg(TRANSPORT_CHANNEL, "ServerApp: bytes read from socket %u\n", bytes);
-                if((server.bytesWritten & 1) == 0) {
-                    data = (((uint16_t)server.buffer[server.bytesWritten-1]) << 8) | (uint16_t)server.buffer[server.bytesWritten-2];
-                    dbg(TRANSPORT_CHANNEL, "Data at %u: %u\n", server.bytesWritten, data);
-                }*/
-                if(server.bytesWritten == 1024) {
-                    //dbg(TRANSPORT_CHANNEL, "ServerApp wrapping\n");
-                    server.bytesWritten = 0;
+            // Accept any new connections
+            newFd = call Transport.accept(server[i].sockfd);
+            if(newFd > 0) {
+                if(server[i].numConns < MAX_NUM_OF_SOCKETS-1) {
+                    server[i].conns[server[i].numConns++] = newFd;
                 }
             }
-        }
-        if(server.bytesWritten >= server.bytesRead) {
-            //dbg(TRANSPORT_CHANNEL, "BytesWritten %u BytesRead %u\n", server.bytesWritten, server.bytesRead);
-            while((((uint16_t)(server.bytesWritten - server.bytesRead)) >= 2) && ((1024 - server.bytesRead) >= 2)) {
+            // Iterate over connections and read
+            for(j = 0; j < server[i].numConns; j++) {
+                if(server[i].conns[j] != 0) {
+                    if(getServerBufferAvailable(i) > 0) {
+                        length = min((TCP_APP_BUFFER_SIZE - server[i].bytesWritten), TCP_APP_READ_SIZE);
+                        bytes += call Transport.read(server[i].conns[j], &server[i].buffer[server[i].bytesWritten], length);
+                        server[i].bytesWritten += bytes;
+                        if(server[i].bytesWritten == TCP_APP_BUFFER_SIZE) {
+                            server[i].bytesWritten = 0;
+                        }
+                    }
+                }
+            }
+            // Print out received data
+            while(getServerBufferOccupied(i) >= 2) {
                 if(!isRead) {
-                    // dbg(TRANSPORT_CHANNEL, "BytesWritten %u BytesRead %u\n", server.bytesWritten, server.bytesRead);
-                    dbg(TRANSPORT_CHANNEL, "Reading Data at %u: ", server.bytesRead);
+                    dbg(TRANSPORT_CHANNEL, "Reading Data at %u: ", server[i].bytesRead);
                     isRead = TRUE;
                 }
-                //printf("|%u|", server.bytesRead);
-                data = (((uint16_t)server.buffer[server.bytesRead+1]) << 8) | (uint16_t)server.buffer[server.bytesRead];
-                printf("%u,", data);
-                server.bytesRead += 2;
-                if(server.bytesRead == 1024) {
-                    server.bytesRead = 0;
-                    break;
+                if(server[i].bytesRead == TCP_APP_BUFFER_SIZE) {
+                    server[i].bytesRead = 0;
                 }
+                data = (((uint16_t)server[i].buffer[server[i].bytesRead+1]) << 8) | (uint16_t)server[i].buffer[server[i].bytesRead];
+                printf("%u,", data);
+                server[i].bytesRead += 2;
             }
             if(isRead)
                 printf("\n");
@@ -156,58 +219,89 @@ implementation{
     }
 
     void handleClient() {
+        uint8_t i;
         uint8_t counter = 10;
-        uint16_t bytes = 0, bytesToTransfer;
-        if(client.sockfd == 0)
-            return;
-        /*
-        // Write data
-        if(client.bytesTransferred < client.transfer) {
-            //memcpy(client.buffer, (uint8_t* ) &client.bytesTransferred, 2);
-            client.buffer[0] = client.bytesTransferred & 0xFF;
-            client.buffer[1] = client.bytesTransferred >> 8;
-            while(bytes < 2 && (counter > 0 || bytes == 1)) {
-                //dbg(TRANSPORT_CHANNEL, "Attempting to write\n");
-                bytes += call Transport.write(client.sockfd, client.buffer, 2);
-                if(counter > 0)
-                    counter--;
+        uint16_t bytesTransferred, bytesToTransfer;
+        for(i = 0; i < MAX_NUM_OF_SOCKETS; i++) {
+            if(client[i].sockfd == 0)
+                continue;
+            // Writing to buffer
+            while(getClientBufferAvailable(i) > 0 && client[i].counter < client[i].transfer) {
+                if(client[i].bytesWritten == TCP_APP_BUFFER_SIZE) {
+                    client[i].bytesWritten = 0;
+                }
+                if((client[i].bytesWritten & 1) == 0) {
+                    client[i].buffer[client[i].bytesWritten] = client[i].counter & 0xFF;
+                } else {
+                    client[i].buffer[client[i].bytesWritten] = client[i].counter >> 8;
+                    client[i].counter++;
+                }
+                client[i].bytesWritten++;
             }
-            if(bytes == 2) {
-                client.bytesTransferred++;
+            // Writing to socket
+            if(getClientBufferOccupied(i) > 0) {
+                bytesToTransfer = min((TCP_APP_BUFFER_SIZE - client[i].bytesTransferred), (client[i].bytesWritten - client[i].bytesTransferred));
+                bytesTransferred = call Transport.write(client[i].sockfd, &client[i].buffer[client[i].bytesTransferred], bytesToTransfer);
+                client[i].bytesTransferred += bytesTransferred;
             }
-        }*/
-        if(client.bytesWritten < client.bytesTransferred) {
-            bytesToTransfer = 1024 - client.bytesTransferred;
+            if(client[i].bytesTransferred == TCP_APP_BUFFER_SIZE)
+                client[i].bytesTransferred = 0;
+        }
+    }
+
+    void zeroClient(uint8_t idx) {
+        client[idx].sockfd = 0;
+        client[idx].bytesWritten = 0;
+        client[idx].bytesTransferred = 0;
+        client[idx].counter = 0;
+        client[idx].transfer = 0;
+    }
+
+    void zeroServer(uint8_t idx) {
+        uint8_t i;
+        server[idx].sockfd = 0;
+        server[idx].bytesRead = 0;
+        server[idx].bytesWritten = 0;
+        server[idx].numConns = 0;
+        for(i = 0; i < MAX_NUM_OF_SOCKETS-1; i++) {
+            server[idx].conns[i] = 0;
+        }
+    }
+
+    uint16_t getServerBufferOccupied(uint8_t idx) {
+        if(server[idx].bytesRead == server[idx].bytesWritten) {
+            return 0;
+        } else if(server[idx].bytesRead < server[idx].bytesWritten) {
+            return server[idx].bytesWritten - server[idx].bytesRead;
         } else {
-            bytesToTransfer = client.bytesWritten - client.bytesTransferred;
+            return (TCP_APP_BUFFER_SIZE - server[idx].bytesRead) + server[idx].bytesWritten;
         }
-        /*
-        dbg(TRANSPORT_CHANNEL, "bytesWritten %u\n", client.bytesWritten);
-        dbg(TRANSPORT_CHANNEL, "bytesTransferred %u\n", client.bytesTransferred);
-        dbg(TRANSPORT_CHANNEL, "bytesToTransfer %u\n", bytesToTransfer);
-        */
-        // Writing to buffer
-        while(/*client.bytesWritten < (uint16_t)(client.bytesTransferred-1) && */client.counter < client.transfer) {
-            if((client.bytesWritten & 1) == 0) {
-                client.buffer[client.bytesWritten] = client.counter & 0xFF;
-            } else {
-                client.buffer[client.bytesWritten] = client.counter >> 8;
-                client.counter++;
-                //dbg(TRANSPORT_CHANNEL, "Client writing data: %u\n", (uint16_t)client.buffer[client.bytesWritten] << 8 | (uint16_t)client.buffer[client.bytesWritten-1]);
-            }
-            client.bytesWritten++;
-            if(client.bytesWritten == 1024 && ((1024 - client.bytesWritten) + client.bytesTransferred) > 0) {
-                client.bytesWritten = 0;
-            }
+    }
+
+    uint16_t getServerBufferAvailable(uint8_t idx) {
+        return TCP_APP_BUFFER_SIZE - getServerBufferOccupied(idx) - 1;
+    }
+
+
+    uint16_t getClientBufferOccupied(uint8_t idx) {
+        if(client[idx].bytesTransferred == client[idx].bytesWritten) {
+            return 0;
+        } else if(client[idx].bytesTransferred < client[idx].bytesWritten) {
+            return client[idx].bytesWritten - client[idx].bytesTransferred;
+        } else {
+            return (TCP_APP_BUFFER_SIZE - client[idx].bytesTransferred) + client[idx].bytesWritten;
         }
-        // Writing to socket
-        if(client.bytesTransferred != client.bytesWritten) {
-            bytes += call Transport.write(client.sockfd, &client.buffer[client.bytesTransferred], bytesToTransfer);
-            client.bytesTransferred += bytes;
-            //dbg(TRANSPORT_CHANNEL, "transferred %u bytes\n", bytes);
-        }
-        if(client.bytesTransferred == 1024)
-            client.bytesTransferred = 0;
+    }
+
+    uint16_t getClientBufferAvailable(uint8_t idx) {
+        return TCP_APP_BUFFER_SIZE - getClientBufferOccupied(idx) - 1;
+    }
+
+    uint16_t min(uint16_t a, uint16_t b) {
+        if(a <= b)
+            return a;
+        else
+            return b;
     }
 
 }
