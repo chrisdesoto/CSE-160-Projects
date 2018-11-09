@@ -140,6 +140,7 @@ implementation{
             sockets[fd-1].RTX = call RetransmissionTimer.getNow();
             calculateRTO(fd);
         } else {
+            dbg(TRANSPORT_CHANNEL, "Setting seq num %u\n", sockets[fd-1].stopAndWait);
             tcpPack.ack = sockets[fd-1].stopAndWait;
         }
         if(flags == SYN_ACK) {
@@ -211,7 +212,7 @@ implementation{
             sockets[fd-1].sendBuff[i] = 0;
             sockets[fd-1].rcvdBuff[i] = 0;
         }
-        sockets[fd-1].stopAndWait = 0;
+        sockets[fd-1].stopAndWait = (uint8_t)(call Random.rand16()%256);
         sockets[fd-1].lastWritten = 0;
         sockets[fd-1].lastAck = 0;
         sockets[fd-1].lastSent = 0;
@@ -545,7 +546,7 @@ implementation{
             case SYN:
                 fd = findSocket(TOS_NODE_ID, tcp_rcvd->destPort, 0, 0);
                 if(fd > 0 && sockets[fd-1].state == LISTEN) {
-                    dbg(TRANSPORT_CHANNEL, "SYN recieved on node %u via port %u\n", TOS_NODE_ID, tcp_rcvd->destPort);
+                    dbg(TRANSPORT_CHANNEL, "SYN recieved on node %u via port %u with seq %u\n", TOS_NODE_ID, tcp_rcvd->destPort, tcp_rcvd->seq);
                     // Create new active socket
                     newFd = cloneSocket(fd, package->src, tcp_rcvd->srcPort);
                     if(newFd > 0) {
