@@ -162,7 +162,7 @@ implementation{
             length ^= length & 1;
             if(length == 0) {
                 dbg(TRANSPORT_CHANNEL, "length %u\n", length);
-                return bytes;
+                return 0;
             }
             
             while(bytes < length) {
@@ -202,17 +202,18 @@ implementation{
             sendTCPPacket(fd, ACK);
             return FALSE;
         }
+        dbg(TRANSPORT_CHANNEL, "Reading in data at %u\n", tcp_rcvd->seq);
         // dbg(TRANSPORT_CHANNEL, "Reading in data with sequence number %u.\n", tcp_rcvd->seq);
         while(bytesRead < tcp_rcvd->length && getReceiveBufferAvailable(fd) > 0) {
             memcpy(&sockets[fd-1].rcvdBuff[(++sockets[fd-1].lastRcvd) % SOCKET_BUFFER_SIZE], &tcp_rcvd->payload[bytesRead/2], 2);
             bytesRead += 2;
             sockets[fd-1].lastRcvd++;
         }
-        // dbg(TRANSPORT_CHANNEL, "Last Received %u.\n", sockets[fd-1].lastRcvd);
-        // dbg(TRANSPORT_CHANNEL, "Next Expected %u.\n", sockets[fd-1].nextExpected);
-        // dbg(TRANSPORT_CHANNEL, "Advertising window %u.\n", sockets[fd-1].advertisedWindow);
+        dbg(TRANSPORT_CHANNEL, "Last Received %u.\n", sockets[fd-1].lastRcvd);
         sockets[fd-1].nextExpected = sockets[fd-1].lastRcvd + 1;        
+        dbg(TRANSPORT_CHANNEL, "Next Expected %u.\n", sockets[fd-1].nextExpected);
         sockets[fd-1].advertisedWindow = calcAdvWindow(fd);
+        dbg(TRANSPORT_CHANNEL, "Advertised window %u.\n", sockets[fd-1].advertisedWindow);
         return TRUE;
     }
 
@@ -642,6 +643,7 @@ implementation{
         if(fd == 0 || fd > MAX_NUM_OF_SOCKETS || sockets[fd-1].state != ESTABLISHED) {
             return 0;
         }
+        dbg(TRANSPORT_CHANNEL, "Readable %u at %u\n", getReceiverReadable(fd), sockets[fd-1].lastRead+1);
         // Read all possible data from the given socket
         while(bytesRead < bufflen && getReceiverReadable(fd) > 0) {
             memcpy(buff, &sockets[fd-1].rcvdBuff[(++sockets[fd-1].lastRead) % SOCKET_BUFFER_SIZE], 1);
