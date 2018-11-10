@@ -69,7 +69,6 @@ typedef struct socket_store_t {
     uint32_t RTO;
     uint32_t RTX;
     uint8_t advertisedWindow;
-    uint8_t effectiveWindow;
 }socket_store_t;
 
 #endif

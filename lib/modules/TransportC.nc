@@ -28,8 +28,8 @@ implementation {
     components DistanceVectorRoutingC;
     TransportP.DistanceVectorRouting -> DistanceVectorRoutingC;
 
-    components new TimerMilliC() as RetransmissionTimer;
-    TransportP.RetransmissionTimer -> RetransmissionTimer;
+    components new TimerMilliC() as TransmissionTimer;
+    TransportP.TransmissionTimer -> TransmissionTimer;
 
     components RandomC as Random;
     TransportP.Random -> Random;
