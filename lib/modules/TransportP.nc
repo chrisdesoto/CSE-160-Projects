@@ -69,9 +69,9 @@ implementation{
         lastRead = sockets[fd-1].lastRead % SOCKET_BUFFER_SIZE;
         nextExpected = sockets[fd-1].nextExpected % SOCKET_BUFFER_SIZE;
         if(lastRead < nextExpected)
-            return nextExpected - lastRead - 1;
+            return nextExpected - lastRead - 1;        
         else
-            return SOCKET_BUFFER_SIZE - lastRead + nextExpected - 1;
+            return SOCKET_BUFFER_SIZE - lastRead + nextExpected - 1;        
     }
 
     uint16_t getSenderDataInFlight(uint8_t fd) {
@@ -146,7 +146,7 @@ implementation{
 
     uint8_t sendTCPPacket(uint8_t fd, uint8_t flags) {
         uint8_t length, bytes = 0;
-        uint16_t i;
+        uint8_t* payload = tcpPack.payload;
         tcpPack.srcPort = sockets[fd-1].src.port;
         tcpPack.destPort = sockets[fd-1].dest.port;
         tcpPack.flags = flags;
@@ -161,14 +161,11 @@ implementation{
             length = min(calcEffWindow(fd), min(getSendBufferOccupied(fd), TCP_PACKET_PAYLOAD_SIZE));
             length ^= length & 1;
             if(length == 0) {
-                dbg(TRANSPORT_CHANNEL, "length %u\n", length);
                 return 0;
-            }
-            
+            }            
             while(bytes < length) {
-                memcpy(tcpPack.payload+(bytes>>1), &sockets[fd-1].sendBuff[(++sockets[fd-1].lastSent) % SOCKET_BUFFER_SIZE], 2);
-                bytes += 2;
-                sockets[fd-1].lastSent++;
+                memcpy(payload+bytes, &sockets[fd-1].sendBuff[(++sockets[fd-1].lastSent) % SOCKET_BUFFER_SIZE], 1);
+                bytes += 1;
             }
             tcpPack.length = length;
         }
@@ -192,7 +189,8 @@ implementation{
     }
 
     bool readInData(uint8_t fd, tcp_pack* tcp_rcvd) {
-        uint16_t idx = 0, bytesRead = 0;
+        uint16_t i = 0, bytesRead = 0;
+        uint8_t* payload = tcp_rcvd->payload;
         if(getReceiveBufferAvailable(fd) < tcp_rcvd->length) {
             // dbg(TRANSPORT_CHANNEL, "Dropping packet. Can't fit data in buffer.\n");
             return FALSE;
@@ -202,18 +200,16 @@ implementation{
             sendTCPPacket(fd, ACK);
             return FALSE;
         }
-        dbg(TRANSPORT_CHANNEL, "Reading in data at %u\n", tcp_rcvd->seq);
         // dbg(TRANSPORT_CHANNEL, "Reading in data with sequence number %u.\n", tcp_rcvd->seq);
         while(bytesRead < tcp_rcvd->length && getReceiveBufferAvailable(fd) > 0) {
-            memcpy(&sockets[fd-1].rcvdBuff[(++sockets[fd-1].lastRcvd) % SOCKET_BUFFER_SIZE], &tcp_rcvd->payload[bytesRead/2], 2);
-            bytesRead += 2;
-            sockets[fd-1].lastRcvd++;
+            memcpy(&sockets[fd-1].rcvdBuff[(++sockets[fd-1].lastRcvd) % SOCKET_BUFFER_SIZE], payload+bytesRead, 1);
+            bytesRead += 1;
         }
-        dbg(TRANSPORT_CHANNEL, "Last Received %u.\n", sockets[fd-1].lastRcvd);
+        //dbg(TRANSPORT_CHANNEL, "Last Received %u.\n", sockets[fd-1].lastRcvd);
         sockets[fd-1].nextExpected = sockets[fd-1].lastRcvd + 1;        
-        dbg(TRANSPORT_CHANNEL, "Next Expected %u.\n", sockets[fd-1].nextExpected);
+        //dbg(TRANSPORT_CHANNEL, "Next Expected %u.\n", sockets[fd-1].nextExpected);
         sockets[fd-1].advertisedWindow = calcAdvWindow(fd);
-        dbg(TRANSPORT_CHANNEL, "Advertised window %u.\n", sockets[fd-1].advertisedWindow);
+        //dbg(TRANSPORT_CHANNEL, "Advertised window %u.\n", sockets[fd-1].advertisedWindow);
         return TRUE;
     }
 
@@ -333,7 +329,7 @@ implementation{
                         dbg(TRANSPORT_CHANNEL, "CONNECTION CLOSED!\n");
                 }
             }
-            if(sockets[i].state == ESTABLISHED && sockets[i].type == CLIENT) {
+            if(sockets[i].state == ESTABLISHED && sockets[i].type == CLIENT) {                
                 // Send window
                 sendWindow(i+1);
             } else if(sockets[i].state == LAST_ACK) {
@@ -643,7 +639,6 @@ implementation{
         if(fd == 0 || fd > MAX_NUM_OF_SOCKETS || sockets[fd-1].state != ESTABLISHED) {
             return 0;
         }
-        dbg(TRANSPORT_CHANNEL, "Readable %u at %u\n", getReceiverReadable(fd), sockets[fd-1].lastRead+1);
         // Read all possible data from the given socket
         while(bytesRead < bufflen && getReceiverReadable(fd) > 0) {
             memcpy(buff, &sockets[fd-1].rcvdBuff[(++sockets[fd-1].lastRead) % SOCKET_BUFFER_SIZE], 1);
