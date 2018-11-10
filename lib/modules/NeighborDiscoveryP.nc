@@ -24,6 +24,7 @@ implementation {
     command error_t NeighborDiscovery.start() {
         call NeighborDiscoveryTimer.startPeriodic(10000 + (uint16_t) (call Random.rand16()%1000));
         dbg(NEIGHBOR_CHANNEL, "Neighbor Discovery Started on node %u!\n", TOS_NODE_ID);
+        return SUCCESS;
     }
 
     command void NeighborDiscovery.handleNeighbor(pack* myMsg) {

@@ -59,11 +59,6 @@ implementation{
         return call SocketMap.get(socketId);
     }
 
-    void printSocket(uint8_t fd) {
-        dbg(TRANSPORT_CHANNEL, "fd %u, socket %u\n", fd, fd-1);
-        dbg(TRANSPORT_CHANNEL, "last read %u, last received %u, next expected %u\n", sockets[fd-1].lastRead, sockets[fd-1].lastRcvd, sockets[fd-1].nextExpected);
-    }
-
     uint16_t getReceiverReadable(uint8_t fd) {
         uint16_t lastRead, nextExpected;
         lastRead = sockets[fd-1].lastRead % SOCKET_BUFFER_SIZE;
@@ -146,23 +141,26 @@ implementation{
 
     uint8_t sendTCPPacket(uint8_t fd, uint8_t flags) {
         uint8_t length, bytes = 0;
-        uint8_t* payload = tcpPack.payload;
+        uint8_t* payload = (uint8_t*)tcpPack.payload;
+        // Set up packet info
         tcpPack.srcPort = sockets[fd-1].src.port;
         tcpPack.destPort = sockets[fd-1].dest.port;
         tcpPack.flags = flags;
         tcpPack.advertisedWindow = sockets[fd-1].advertisedWindow;
+        tcpPack.ack = sockets[fd-1].nextExpected;
+        // Send initial sequence number or next expected
         if(flags == SYN) {
             tcpPack.seq = sockets[fd-1].lastSent;
         } else {
             tcpPack.seq = sockets[fd-1].lastSent + 1;
         }
         if(flags == DATA) {
-            // Choose the smallest of the effective window, the number of bytes available to send, and the max packet size
+            // Choose the min of the effective window, the number of bytes available to send, and the max packet size
             length = min(calcEffWindow(fd), min(getSendBufferOccupied(fd), TCP_PACKET_PAYLOAD_SIZE));
             length ^= length & 1;
             if(length == 0) {
                 return 0;
-            }            
+            }
             while(bytes < length) {
                 memcpy(payload+bytes, &sockets[fd-1].sendBuff[(++sockets[fd-1].lastSent) % SOCKET_BUFFER_SIZE], 1);
                 bytes += 1;
@@ -173,7 +171,6 @@ implementation{
             sockets[fd-1].RTX = call TransmissionTimer.getNow();
             calculateRTO(fd);
         }
-        tcpPack.ack = sockets[fd-1].nextExpected;
         makePack(&ipPack, TOS_NODE_ID, sockets[fd-1].dest.addr, BETTER_TTL, PROTOCOL_TCP, 0, &tcpPack, sizeof(tcp_pack));
         call DistanceVectorRouting.routePacket(&ipPack);
         return bytes;
@@ -189,8 +186,8 @@ implementation{
     }
 
     bool readInData(uint8_t fd, tcp_pack* tcp_rcvd) {
-        uint16_t i = 0, bytesRead = 0;
-        uint8_t* payload = tcp_rcvd->payload;
+        uint16_t bytesRead = 0;
+        uint8_t* payload = (uint8_t*)tcp_rcvd->payload;
         if(getReceiveBufferAvailable(fd) < tcp_rcvd->length) {
             // dbg(TRANSPORT_CHANNEL, "Dropping packet. Can't fit data in buffer.\n");
             return FALSE;
@@ -205,13 +202,29 @@ implementation{
             memcpy(&sockets[fd-1].rcvdBuff[(++sockets[fd-1].lastRcvd) % SOCKET_BUFFER_SIZE], payload+bytesRead, 1);
             bytesRead += 1;
         }
-        //dbg(TRANSPORT_CHANNEL, "Last Received %u.\n", sockets[fd-1].lastRcvd);
+        // dbg(TRANSPORT_CHANNEL, "Last Received %u.\n", sockets[fd-1].lastRcvd);
         sockets[fd-1].nextExpected = sockets[fd-1].lastRcvd + 1;        
-        //dbg(TRANSPORT_CHANNEL, "Next Expected %u.\n", sockets[fd-1].nextExpected);
+        // dbg(TRANSPORT_CHANNEL, "Next Expected %u.\n", sockets[fd-1].nextExpected);
         sockets[fd-1].advertisedWindow = calcAdvWindow(fd);
-        //dbg(TRANSPORT_CHANNEL, "Advertised window %u.\n", sockets[fd-1].advertisedWindow);
+        // dbg(TRANSPORT_CHANNEL, "Advertised window %u.\n", sockets[fd-1].advertisedWindow);
         return TRUE;
     }
+
+    void printSenderInfo(uint8_t fd) {
+        dbg(TRANSPORT_CHANNEL, "fd %u, socket %u\n", fd, fd-1);
+        dbg(TRANSPORT_CHANNEL, "Last Acked %u.\n", sockets[fd-1].lastAck);
+        dbg(TRANSPORT_CHANNEL, "Last Sent %u.\n", sockets[fd-1].lastSent);
+        dbg(TRANSPORT_CHANNEL, "Last Writtin %u.\n", sockets[fd-1].lastWritten);
+        dbg(TRANSPORT_CHANNEL, "Effective window %u.\n", calcEffWindow(fd));
+    }  
+
+    void printReceiverInfo(uint8_t fd) {
+        dbg(TRANSPORT_CHANNEL, "fd %u, socket %u\n", fd, fd-1);
+        dbg(TRANSPORT_CHANNEL, "Last Read %u.\n", sockets[fd-1].lastRead);
+        dbg(TRANSPORT_CHANNEL, "Last Received %u.\n", sockets[fd-1].lastRcvd);
+        dbg(TRANSPORT_CHANNEL, "Next Expected %u.\n", sockets[fd-1].nextExpected);
+        dbg(TRANSPORT_CHANNEL, "Advertised window %u.\n", sockets[fd-1].advertisedWindow);
+    }    
 
     void zeroTCPPacket() {
         uint8_t i;
@@ -288,7 +301,7 @@ implementation{
             // If ESTABLISHED -> attempt to send packets
         for(i = 0; i < MAX_NUM_OF_SOCKETS; i++) {
             if(sockets[i].RTO < call TransmissionTimer.getNow()) {
-                //dbg(TRANSPORT_CHANNEL, "Retransmitting!\n");
+                // dbg(TRANSPORT_CHANNEL, "Retransmitting!\n");
                 switch(sockets[i].state) {
                     case ESTABLISHED:
                         if(sockets[i].lastSent != sockets[i].lastAck && sockets[i].type == CLIENT) {
@@ -302,11 +315,11 @@ implementation{
                         break;
                     case SYN_SENT:
                         dbg(TRANSPORT_CHANNEL, "Resending SYN\n");
-                        // Send SYN
+                        // Resend SYN
                         sendTCPPacket(i+1, SYN);
                         break;
                     case SYN_RCVD:
-                        // Send SYN_ACK
+                        // Resend SYN_ACK
                         sendTCPPacket(i+1, SYN_ACK);
                         break;
                     case CLOSE_WAIT:
@@ -329,7 +342,7 @@ implementation{
                         dbg(TRANSPORT_CHANNEL, "CONNECTION CLOSED!\n");
                 }
             }
-            if(sockets[i].state == ESTABLISHED && sockets[i].type == CLIENT) {                
+            if(sockets[i].state == ESTABLISHED && sockets[i].type == CLIENT) {
                 // Send window
                 sendWindow(i+1);
             } else if(sockets[i].state == LAST_ACK) {
@@ -448,7 +461,7 @@ implementation{
     *    from the pass buffer. This may be shorter then bufflen
     */
     command uint16_t Transport.write(socket_t fd, uint8_t *buff, uint16_t bufflen) {
-        uint16_t bytesWritten = 0, data, maxAllowed;
+        uint16_t bytesWritten = 0;
         // Check for valid socket
         if(fd == 0 || fd > MAX_NUM_OF_SOCKETS || sockets[fd-1].state != ESTABLISHED) {
             return 0;
@@ -617,7 +630,6 @@ implementation{
         }
         return FAIL;
     }
-
     /**
     * Read from the socket and write this data to the buffer. This data
     * is obtained from your TCP implimentation.
@@ -634,7 +646,7 @@ implementation{
     *    from the pass buffer. This may be shorter then bufflen
     */
     command uint16_t Transport.read(socket_t fd, uint8_t *buff, uint16_t bufflen) {
-        uint16_t bytesRead = 0, data;
+        uint16_t bytesRead = 0;
         // Check for valid socket
         if(fd == 0 || fd > MAX_NUM_OF_SOCKETS || sockets[fd-1].state != ESTABLISHED) {
             return 0;

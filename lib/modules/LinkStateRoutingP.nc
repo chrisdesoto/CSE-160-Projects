@@ -164,7 +164,7 @@ implementation {
     }
 
     bool updateState(pack* myMsg) {
-        uint16_t i, j;
+        uint16_t i;
         LSP *lsp = (LSP *)myMsg->payload;
         bool isStateUpdated = FALSE;
         for(i = 0; i < 10; i++) {
@@ -185,7 +185,7 @@ implementation {
     void sendLSP(uint8_t lostNeighbor) {
         uint32_t* neighbors = call NeighborDiscovery.getNeighbors();
         uint16_t neighborsListSize = call NeighborDiscovery.getNeighborListSize();
-        uint16_t i = 0, j = 0, counter = 0;
+        uint16_t i = 0, counter = 0;
         LSP linkStatePayload[10];
         // Zero out the array
         for(i = 0; i < 10; i++) {
@@ -221,7 +221,7 @@ implementation {
     }
 
     void djikstra() {
-        uint16_t i = 0, j = 0, k = 0;
+        uint16_t i = 0;
         uint8_t currentNode = TOS_NODE_ID, minCost = LS_MAX_COST, nextNode = 0, prevNode = 0;
         uint8_t prev[LS_MAX_ROUTES];
         uint8_t cost[LS_MAX_ROUTES];

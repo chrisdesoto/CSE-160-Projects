@@ -46,6 +46,7 @@ implementation {
         initilizeRoutingTable();
         call DVRTimer.startOneShot(40000);
         dbg(ROUTING_CHANNEL, "Distance Vector Routing Started on node %u!\n", TOS_NODE_ID);
+        return SUCCESS;
     }
 
     event void DVRTimer.fired() {
@@ -212,7 +213,7 @@ implementation {
     }
 
     void decrementTTLs() {
-        uint8_t i, j;
+        uint8_t i;
         for(i = 1; i < numRoutes; i++) {
             // If valid entry in the routing table -> decrement the TTL
             if(routingTable[i].ttl != 0) {

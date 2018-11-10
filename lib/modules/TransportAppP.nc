@@ -172,10 +172,10 @@ implementation{
     }
 
     void handleServer() {
-        uint8_t i, j, counter = 10, bytes = 0;
-        uint8_t newFd;
+        uint8_t i, j, bytes, newFd;
         uint16_t data, length;
         bool isRead = FALSE;
+        bytes = 0;
         for(i = 0; i < numServers; i++) {
             if(server[i].sockfd == 0) {
                 continue;
@@ -220,7 +220,6 @@ implementation{
 
     void handleClient() {
         uint8_t i;
-        uint8_t counter = 10;
         uint16_t bytesTransferred, bytesToTransfer;
         for(i = 0; i < MAX_NUM_OF_SOCKETS; i++) {
             if(client[i].sockfd == 0)

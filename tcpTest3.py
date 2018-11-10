@@ -32,8 +32,8 @@ def main():
     s.cmdTestServer(1, 50)
     s.runTime(10)
 
-    s.cmdTestClient(12, 1, 25, 50, 1000)
-    s.runTime(300)
+    s.cmdTestClient(12, 1, 25, 50, 2000)
+    s.runTime(1000)
 
     s.cmdClientClose(12, 1, 25, 50)
     s.runTime(10)
