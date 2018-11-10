@@ -32,11 +32,11 @@ def main():
     s.cmdTestServer(1, 50)
     s.runTime(10)
 
-    s.cmdTestClient(2, 1, 25, 50, 450)
-    s.runTime(400)
+    s.cmdTestClient(2, 1, 25, 50, 700)
+    s.runTime(200)
 
     s.cmdClientClose(2, 1, 25, 50)
-    s.runTime(200)
+    s.runTime(100)
 
 if __name__ == '__main__':
     main()

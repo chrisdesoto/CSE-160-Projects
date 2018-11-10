@@ -22,8 +22,8 @@ enum tcp_flags{
 typedef nx_struct tcp_pack {
 	nx_uint8_t srcPort;
 	nx_uint8_t destPort;
-	nx_uint16_t seq;
-	nx_uint16_t ack;
+	nx_uint8_t seq;
+	nx_uint8_t ack;
 	nx_uint8_t flags;
 	nx_uint8_t advertisedWindow;
 	nx_uint8_t length;
