@@ -37,11 +37,25 @@ implementation{
         memcpy(Package->payload, payload, length);
     }
 
-    uint16_t min(uint16_t a, uint16_t b) {
+    uint32_t min(uint32_t a, uint32_t b) {
         if(a <= b)
             return a;
         else
             return b;
+    }
+
+    uint32_t max(uint32_t a, uint32_t b) {
+        if(a <= b)
+            return b;
+        else
+            return a;
+    }    
+
+    uint32_t absDiff(uint32_t a, uint32_t b) {
+        if(a < b)
+            return b - a;
+        else
+            return a - b;
     }
 
     void addConnection(uint8_t fd, uint8_t conn) {
@@ -115,12 +129,10 @@ implementation{
         uint8_t lastRead, lastRcvd;
         lastRead = sockets[fd-1].lastRead % SOCKET_BUFFER_SIZE;
         lastRcvd = sockets[fd-1].lastRcvd % SOCKET_BUFFER_SIZE;
-        if(lastRead == lastRcvd)
-            return SOCKET_BUFFER_SIZE - 1;
-        else if(lastRead > lastRcvd)
-            return lastRead - lastRcvd - 1;
+        if(lastRead <= lastRcvd)
+            return lastRead + (SOCKET_BUFFER_SIZE - lastRcvd);
         else
-            return lastRead + (SOCKET_BUFFER_SIZE - lastRcvd) - 1;
+            return lastRead - lastRcvd;
     }
 
     uint8_t calcAdvWindow(uint8_t fd) {
@@ -131,12 +143,28 @@ implementation{
         return sockets[fd-1].advertisedWindow - getSenderDataInFlight(fd);
     }
 
-    void calculateRTT(uint8_t fd) {
-        sockets[fd-1].RTT = ((TCP_RTT_ALPHA) * (sockets[fd-1].RTT) + (100-TCP_RTT_ALPHA) * (call TransmissionTimer.getNow() - sockets[fd-1].RTX)) / 100;
+    uint8_t calcCongWindow(uint8_t fd) {
+        return (sockets[fd-1].cwnd * TCP_PACKET_PAYLOAD_SIZE) + ((sockets[fd-1].cwndRemainder * TCP_PACKET_PAYLOAD_SIZE) / sockets[fd-1].cwnd);
     }
 
-    void calculateRTO(uint8_t fd) {
-        sockets[fd-1].RTO = call TransmissionTimer.getNow() + (2 * sockets[fd-1].RTT);
+    void calcRTT(uint8_t fd, uint16_t ack) {
+        uint32_t now = call TransmissionTimer.getNow();
+        if(sockets[fd-1].RTT_SEQ == ack && sockets[fd-1].IS_VALID_RTT) {
+            // dbg(TRANSPORT_CHANNEL, "RTT: %u, RTT_VAR: %u, Now %u, RTX %u\n", sockets[fd-1].RTT, sockets[fd-1].RTT_VAR, now, sockets[fd-1].RTX);
+            sockets[fd-1].RTT = ((TCP_RTT_ALPHA) * (sockets[fd-1].RTT) + (100-TCP_RTT_ALPHA) * (now - sockets[fd-1].RTX)) / 100;
+            sockets[fd-1].RTT_VAR = ((TCP_RTT_BETA) * (sockets[fd-1].RTT_VAR) + (100-TCP_RTT_BETA) * absDiff(sockets[fd-1].RTT_VAR, now - sockets[fd-1].RTX)) / 100;
+            // dbg(TRANSPORT_CHANNEL, "RTT: %u, RTT_VAR: %u\n", sockets[fd-1].RTT, sockets[fd-1].RTT_VAR);
+        } else if(sockets[fd-1].RTT_SEQ == ack) {
+            // dbg(TRANSPORT_CHANNEL, "Received ack but RTT invalid.\n");
+            sockets[fd-1].IS_VALID_RTT = TRUE;
+        }
+    }
+
+    void calcRTO(uint8_t fd) {
+        sockets[fd-1].RTT_SEQ = sockets[fd-1].lastSent + 1;
+        sockets[fd-1].RTX = call TransmissionTimer.getNow();
+        // sockets[fd-1].RTO = sockets[fd-1].RTX + (2 * sockets[fd-1].RTT);
+        sockets[fd-1].RTO = sockets[fd-1].RTX + (4 * sockets[fd-1].RTT_VAR);
     }
 
     uint8_t sendTCPPacket(uint8_t fd, uint8_t flags) {
@@ -167,29 +195,56 @@ implementation{
             }
             tcpPack.length = length;
         }
-        if(flags != ACK) {
-            sockets[fd-1].RTX = call TransmissionTimer.getNow();
-            calculateRTO(fd);
-        }
         makePack(&ipPack, TOS_NODE_ID, sockets[fd-1].dest.addr, BETTER_TTL, PROTOCOL_TCP, 0, &tcpPack, sizeof(tcp_pack));
         call DistanceVectorRouting.routePacket(&ipPack);
         return bytes;
     }
 
     void sendWindow(uint8_t fd) {
-        uint16_t bytesRemaining = min(getSendBufferOccupied(fd), calcEffWindow(fd));
+        uint16_t bytesRemaining = min(calcCongWindow(fd), min(getSendBufferOccupied(fd), calcEffWindow(fd)));
         uint8_t bytesSent;
+        bool firstPacket = TRUE;
+        // if(getSendBufferOccupied(fd) > 0)
+        //     dbg(TRANSPORT_CHANNEL, "CWND %u, ssthresh %u, EWND %u\n", calcCongWindow(fd), sockets[fd-1].ssthresh*TCP_PACKET_PAYLOAD_SIZE, calcEffWindow(fd));
         while(bytesRemaining > 0 && bytesSent > 0) {
             bytesSent = sendTCPPacket(fd, DATA);
             bytesRemaining -= bytesSent;
+            if(firstPacket && bytesSent > 0) {
+                calcRTO(fd);
+                firstPacket = FALSE;
+            }
         }
+    }
+
+    bool handleFT(uint8_t fd, uint16_t ack) {
+        if(sockets[fd-1].dupAck.seq == ack) {
+            sockets[fd-1].dupAck.count++;
+            if(sockets[fd-1].dupAck.count == TCP_FT_DUP) {
+                // dbg(TRANSPORT_CHANNEL, "Fast retransmit\n");
+                // Retransmit
+                sockets[fd-1].lastSent = sockets[fd-1].lastAck;
+                sendWindow(fd);
+                // ssthresh = cwnd / 2
+                sockets[fd-1].ssthresh = max(sockets[fd-1].cwnd >> 1,TCP_MIN_CWND);
+                // cwnd = cwnd / 2
+                sockets[fd-1].cwnd = sockets[fd-1].ssthresh;
+                sockets[fd-1].cwndRemainder = 0;
+                // AIMD
+                sockets[fd-1].cwndStrategy = AIMD;
+                return TRUE;
+            }
+        } else {
+            sockets[fd-1].dupAck.seq = ack;
+            sockets[fd-1].dupAck.count = 1;
+        }
+        return FALSE;
     }
 
     bool readInData(uint8_t fd, tcp_pack* tcp_rcvd) {
         uint16_t bytesRead = 0;
         uint8_t* payload = (uint8_t*)tcp_rcvd->payload;
         if(getReceiveBufferAvailable(fd) < tcp_rcvd->length) {
-            // dbg(TRANSPORT_CHANNEL, "Dropping packet. Can't fit data in buffer.\n");
+            // dbg(TRANSPORT_CHANNEL, "Dropping packet length: %u. Can't fit data in buffer. Adv Window: %u, Buffer Available: %u\n", tcp_rcvd->length, sockets[fd-1].advertisedWindow, getReceiveBufferAvailable(fd));
             return FALSE;
         }
         if(sockets[fd-1].nextExpected != tcp_rcvd->seq) {
@@ -261,7 +316,18 @@ implementation{
         sockets[fd-1].lastRcvd = 0;
         sockets[fd-1].nextExpected = 0;
         sockets[fd-1].RTT = TCP_INITIAL_RTT;
-        sockets[fd-1].advertisedWindow = SOCKET_BUFFER_SIZE;
+        sockets[fd-1].RTT_VAR = TCP_INITIAL_RTT_VAR;
+        sockets[fd-1].RTO = TCP_INITIAL_RTO;
+        sockets[fd-1].RTT_SEQ = i;
+        sockets[fd-1].RTX = 0;
+        sockets[fd-1].IS_VALID_RTT = TRUE;
+        sockets[fd-1].advertisedWindow = SOCKET_BUFFER_SIZE - 1;
+        sockets[fd-1].cwnd = TCP_MIN_CWND;
+        sockets[fd-1].cwndRemainder = 0;
+        sockets[fd-1].cwndStrategy = SLOW_START;
+        sockets[fd-1].ssthresh = TCP_MAX_CWND;
+        sockets[fd-1].dupAck.seq = 0;
+        sockets[fd-1].dupAck.count = 0;
     }
 
     uint8_t cloneSocket(uint8_t fd, uint16_t addr, uint8_t port) {
@@ -305,22 +371,30 @@ implementation{
                 switch(sockets[i].state) {
                     case ESTABLISHED:
                         if(sockets[i].lastSent != sockets[i].lastAck && sockets[i].type == CLIENT) {
+                            // dbg(TRANSPORT_CHANNEL, "Resending at %u\n", sockets[i].lastSent+1);
                             // Go back N
                             sockets[i].lastSent = sockets[i].lastAck;
+                            // Adjust ssthresh, cwnd
+                            sockets[i].ssthresh = max(sockets[i].cwnd >> 1,TCP_MIN_CWND);
+                            sockets[i].cwnd = TCP_MIN_CWND;
+                            sockets[i].cwndRemainder = 0;
+                            sockets[i].cwndStrategy = SLOW_START;
                             // Resend window
                             sendWindow(i+1);
-                            // dbg(TRANSPORT_CHANNEL, "Resending at %u\n", sockets[i].lastSent+1);
+                            // Don't calc RTT
+                            sockets[i].IS_VALID_RTT = FALSE;
                             continue;
                         }
                         break;
                     case SYN_SENT:
-                        dbg(TRANSPORT_CHANNEL, "Resending SYN\n");
                         // Resend SYN
                         sendTCPPacket(i+1, SYN);
+                        calcRTO(i+1);
                         break;
                     case SYN_RCVD:
                         // Resend SYN_ACK
                         sendTCPPacket(i+1, SYN_ACK);
+                        calcRTO(i+1);
                         break;
                     case CLOSE_WAIT:
                         // Resend FIN
@@ -331,11 +405,11 @@ implementation{
                         sockets[i].RTO = call TransmissionTimer.getNow() + (4 * sockets[i].RTT);
                         break;
                     case FIN_WAIT_1:
-                        // Resend FIN
-                        dbg(TRANSPORT_CHANNEL, "Resending last FIN\n");
-                        sendTCPPacket(i+1, FIN);
-                        break;
                     case LAST_ACK:
+                        // Resend FIN
+                        sendTCPPacket(i+1, FIN);
+                        calcRTO(i+1);
+                        break;
                     case TIME_WAIT:
                         // Timeout! Close the connection
                         sockets[i].state = CLOSED;
@@ -345,10 +419,6 @@ implementation{
             if(sockets[i].state == ESTABLISHED && sockets[i].type == CLIENT) {
                 // Send window
                 sendWindow(i+1);
-            } else if(sockets[i].state == LAST_ACK) {
-                // Resend FIN
-                dbg(TRANSPORT_CHANNEL, "Resending last FIN\n");
-                sendTCPPacket(i+1, FIN);
             }
         }
     }    
@@ -508,7 +578,8 @@ implementation{
                 fd = findSocket(TOS_NODE_ID, tcp_rcvd->destPort, src, tcp_rcvd->srcPort);
                 if(fd == 0)
                     break;
-                calculateRTT(fd);
+                // Calculate RTT
+                calcRTT(fd, tcp_rcvd->ack);
                 //dbg(TRANSPORT_CHANNEL, "RTT now %u\n", sockets[fd-1].RTT);
                 switch(sockets[fd-1].state) {
                     case SYN_RCVD:
@@ -518,7 +589,32 @@ implementation{
                         dbg(TRANSPORT_CHANNEL, "CONNECTION ESTABLISHED!\n");
                         return SUCCESS;
                     case ESTABLISHED:
-                        // Data ACK
+                        // Handle Fast Retransmit
+                        if(!handleFT(fd, tcp_rcvd->ack)) {
+                            // Increase cwnd based on cwndStrategy
+                            switch(sockets[fd-1].cwndStrategy) {
+                                case SLOW_START:
+                                    // Add packet to cwnd
+                                    sockets[fd-1].cwnd++;
+                                    // Check if cwnd >= ssthresh
+                                    if(sockets[fd-1].cwnd >= sockets[fd-1].ssthresh) {
+                                        sockets[fd-1].cwndStrategy = AIMD;
+                                    }
+                                break;
+                                case AIMD:
+                                    // Check if cwnd at max
+                                    if(sockets[fd-1].cwnd < TCP_MAX_CWND) {
+                                        // Increment cwndRemainder
+                                        sockets[fd-1].cwndRemainder++;
+                                    }
+                                    // Check if cwnd == cwndRemainder
+                                    if(sockets[fd-1].cwnd == sockets[fd-1].cwndRemainder) {
+                                        sockets[fd-1].cwnd++;
+                                        sockets[fd-1].cwndRemainder = 0;
+                                    }
+                            }
+                        }
+                        // Adjust last ack and adv window
                         sockets[fd-1].lastAck = tcp_rcvd->ack - 1;
                         sockets[fd-1].advertisedWindow = tcp_rcvd->advertisedWindow;
                         return SUCCESS;
@@ -547,14 +643,13 @@ implementation{
                     break;
                 switch(sockets[fd-1].state) {
                     case LISTEN:
-                        dbg(TRANSPORT_CHANNEL, "SYN recieved on node %u via port %u with seq %u\n", TOS_NODE_ID, tcp_rcvd->destPort, tcp_rcvd->seq);
                         // Create new active socket
                         newFd = cloneSocket(fd, package->src, tcp_rcvd->srcPort);
                         if(newFd > 0) {
                             // Add new connection to fd connection queue
                             addConnection(fd, newFd);
                             // Set state
-                            dbg(TRANSPORT_CHANNEL, "Received SYN with sequence num %u\n", tcp_rcvd->seq);
+                            dbg(TRANSPORT_CHANNEL, "SYN recieved on node %u via port %u with seq %u\n", TOS_NODE_ID, tcp_rcvd->destPort, tcp_rcvd->seq);
                             sockets[newFd-1].state = SYN_RCVD;
                             sockets[newFd-1].lastRead = tcp_rcvd->seq;
                             sockets[newFd-1].lastRcvd = tcp_rcvd->seq;
@@ -569,16 +664,19 @@ implementation{
                         }                        
                 }
                 break;
-            case SYN_ACK:
-                dbg(TRANSPORT_CHANNEL, "SYN_ACK received on node %u via port %u\n", TOS_NODE_ID, tcp_rcvd->destPort);
+            case SYN_ACK:                
                 // Look up the socket
                 fd = findSocket(TOS_NODE_ID, tcp_rcvd->destPort, src, tcp_rcvd->srcPort);
+                if(fd == 0)
+                    break;
                 if(sockets[fd-1].state == SYN_SENT) {
+                    dbg(TRANSPORT_CHANNEL, "SYN_ACK received on node %u via port %u\n", TOS_NODE_ID, tcp_rcvd->destPort);
                     // Set the advertised window
                     sockets[fd-1].advertisedWindow = tcp_rcvd->advertisedWindow;              
                     sockets[fd-1].state = ESTABLISHED;
                     // Send ACK
                     sendTCPPacket(fd, ACK);
+                    calcRTO(fd);
                     dbg(TRANSPORT_CHANNEL, "ACK sent on node %u via port %u\n", TOS_NODE_ID, tcp_rcvd->destPort);
                     dbg(TRANSPORT_CHANNEL, "CONNECTION ESTABLISHED!\n");
                     return SUCCESS;
@@ -586,16 +684,14 @@ implementation{
                 break;
             case FIN:
                 // Find socket fd
-                fd = findSocket(TOS_NODE_ID, tcp_rcvd->destPort, src, tcp_rcvd->srcPort);
-                dbg(TRANSPORT_CHANNEL, "FIN Received\n");
+                fd = findSocket(TOS_NODE_ID, tcp_rcvd->destPort, src, tcp_rcvd->srcPort);                
                 switch(sockets[fd-1].state) {
                     case ESTABLISHED:
-                        dbg(TRANSPORT_CHANNEL, "Going to CLOSE_WAIT. Sending ACK.\n");
+                        dbg(TRANSPORT_CHANNEL, "FIN received. Going to CLOSE_WAIT. Sending ACK.\n");
                         // Send ACK
                         sendTCPPacket(fd, ACK);                        
                         // Set state
-                        sockets[fd-1].RTX = call TransmissionTimer.getNow();
-                        calculateRTO(fd);
+                        calcRTO(fd);
                         sockets[fd-1].state = CLOSE_WAIT;
                         return SUCCESS;
                     case FIN_WAIT_1:
@@ -688,6 +784,7 @@ implementation{
         sockets[fd-1].type = CLIENT;
         // Send SYN
         sendTCPPacket(fd, SYN);
+        calcRTO(fd);
         // Add new socket to SocketMap
         socketId |= (((uint32_t)dest->addr) << 8) | ((uint32_t)dest->port);
         call SocketMap.insert(socketId, fd);
@@ -735,11 +832,10 @@ implementation{
                 return SUCCESS;
             case ESTABLISHED:
             case SYN_RCVD:
-                dbg(TRANSPORT_CHANNEL, "Sending FIN\n");
                 // Initiate FIN sequence
                 sendTCPPacket(fd, FIN);
                 // Set FIN_WAIT_1
-                dbg(TRANSPORT_CHANNEL, "Going to FIN_WAIT_1\n");
+                dbg(TRANSPORT_CHANNEL, "Sending FIN. Going to FIN_WAIT_1\n");
                 sockets[fd-1].state = FIN_WAIT_1;
                 return SUCCESS;
             case CLOSE_WAIT:

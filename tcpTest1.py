@@ -32,8 +32,8 @@ def main():
     s.cmdTestServer(1, 50)
     s.runTime(10)
 
-    s.cmdTestClient(2, 1, 25, 50, 50)
-    s.runTime(20)
+    s.cmdTestClient(2, 1, 25, 50, 500)
+    s.runTime(200)
 
 if __name__ == '__main__':
     main()

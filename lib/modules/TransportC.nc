@@ -34,6 +34,6 @@ implementation {
     components RandomC as Random;
     TransportP.Random -> Random;
 
-    components new HashmapC(uint8_t, 20);
-    TransportP.SocketMap -> HashmapC;
+    components new HashmapC(uint8_t, 20) as SocketMap;
+    TransportP.SocketMap -> SocketMap;
 }

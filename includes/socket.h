@@ -1,7 +1,7 @@
 #ifndef __SOCKET_H__
 #define __SOCKET_H__
 
-enum{
+enum {
     MAX_NUM_OF_SOCKETS = 10,
     ROOT_SOCKET_ADDR = 255,
     ROOT_SOCKET_PORT = 255,
@@ -13,7 +13,7 @@ enum socket_type {
     CLIENT
 };
 
-enum socket_state{
+enum socket_state {
     CLOSED,
     OPENED,
     NAMED,
@@ -29,6 +29,10 @@ enum socket_state{
     LAST_ACK
 };
 
+enum tcp_cwnd_strategy {
+	SLOW_START,
+	AIMD
+};
 
 typedef nx_uint8_t nx_socket_port_t;
 typedef uint8_t socket_port_t;
@@ -42,6 +46,11 @@ typedef nx_struct socket_addr_t{
 
 // File descripter id. Each id is associated with a socket_store_t
 typedef uint8_t socket_t;
+
+typedef struct dup_ack_t {
+    uint8_t seq;
+    uint8_t count;
+} dup_ack_t;
 
 // State of a socket. 
 typedef struct socket_store_t {
@@ -66,9 +75,17 @@ typedef struct socket_store_t {
     uint8_t nextExpected;
 
     uint32_t RTT;
+    uint32_t RTT_VAR;
+    uint32_t RTT_SEQ;
     uint32_t RTO;
     uint32_t RTX;
+    bool IS_VALID_RTT;
     uint8_t advertisedWindow;
-}socket_store_t;
+    uint8_t cwnd;
+    uint8_t cwndRemainder;
+    enum tcp_cwnd_strategy cwndStrategy;
+    uint8_t ssthresh;
+    dup_ack_t dupAck;
+} socket_store_t;
 
 #endif

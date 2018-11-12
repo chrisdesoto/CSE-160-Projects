@@ -8,7 +8,13 @@
 #define TCP_PACKET_PAYLOAD_LENGTH 5
 #define TCP_PACKET_PAYLOAD_SIZE TCP_PACKET_PAYLOAD_LENGTH*sizeof(nx_uint16_t)
 #define TCP_INITIAL_RTT 700
+#define TCP_INITIAL_RTO 1024
+#define TCP_INITIAL_RTT_VAR 200
 #define TCP_RTT_ALPHA 80
+#define TCP_RTT_BETA 75
+#define TCP_MIN_CWND 1
+#define TCP_MAX_CWND 18
+#define TCP_FT_DUP 3
 
 enum tcp_flags{
 	DATA = 0,
