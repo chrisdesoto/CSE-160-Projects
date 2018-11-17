@@ -54,13 +54,11 @@ typedef struct dup_ack_t {
 
 // State of a socket. 
 typedef struct socket_store_t {
-    uint8_t flags;
     enum socket_state state;
     enum socket_type type;
     socket_addr_t src;
     socket_addr_t dest;
     uint8_t connectionQueue[MAX_NUM_OF_SOCKETS-1];
-    uint8_t stopAndWait;
 
     // This is the sender portion.
     uint8_t sendBuff[SOCKET_BUFFER_SIZE];
@@ -86,6 +84,7 @@ typedef struct socket_store_t {
     enum tcp_cwnd_strategy cwndStrategy;
     uint8_t ssthresh;
     dup_ack_t dupAck;
+    bool deadlockAck;
 } socket_store_t;
 
 #endif

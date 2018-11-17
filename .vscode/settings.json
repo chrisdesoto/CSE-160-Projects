@@ -1,6 +1,6 @@
 {
     "files.associations": {
-        "*.nc": "c",
+        "*.nc": "nesc",
         "*.jsx": "javascript",
         "commandmsg.h": "c",
         "packet.h": "c"

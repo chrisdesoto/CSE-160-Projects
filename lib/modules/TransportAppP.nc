@@ -218,7 +218,7 @@ implementation{
         }
     }
 
-    void handleClient() {
+    void handleClient() {        
         uint8_t i;
         uint16_t bytesTransferred, bytesToTransfer;
         for(i = 0; i < MAX_NUM_OF_SOCKETS; i++) {
