@@ -220,7 +220,6 @@ implementation{
             sockets[fd-1].dupAck.count++;
             if(sockets[fd-1].dupAck.count == TCP_FT_DUP) {
                 // dbg(TRANSPORT_CHANNEL, "Fast retransmit: %u.\n", sockets[fd-1].lastAck + 1);
-                // dbg(TRANSPORT_CHANNEL, "cwnd: %u. cwndRemainder %u\n", sockets[fd-1].cwnd, sockets[fd-1].cwndRemainder);
                 // cwnd = cwnd / 2
                 temp = calcCongWindow(fd);
                 sockets[fd-1].cwnd = max((temp >> 1) / TCP_PACKET_PAYLOAD_SIZE, TCP_MIN_CWND);
