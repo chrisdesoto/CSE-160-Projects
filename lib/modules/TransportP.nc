@@ -203,8 +203,8 @@ implementation{
         uint8_t bytesSent;
         bool firstPacket = TRUE;
         while(bytesRemaining > 0 && bytesSent > 0 && calcCongWindow(fd) > getSenderDataInFlight(fd)) {
-            if(firstPacket)
-                dbg(TRANSPORT_CHANNEL, "Sending %u bytes. Data in flight %u, CWND %u, SSTHRESH %u, EWND %u\n", bytesRemaining, getSenderDataInFlight(fd), calcCongWindow(fd), sockets[fd-1].ssthresh, calcEffWindow(fd));
+            // if(firstPacket)
+            //     dbg(TRANSPORT_CHANNEL, "Sending %u bytes. Data in flight %u, CWND %u, SSTHRESH %u, EWND %u\n", bytesRemaining, getSenderDataInFlight(fd), calcCongWindow(fd), sockets[fd-1].ssthresh, calcEffWindow(fd));
             bytesSent = sendTCPPacket(fd, DATA);
             bytesRemaining -= bytesSent;
             if(firstPacket && bytesSent > 0) {
@@ -219,7 +219,7 @@ implementation{
         if(sockets[fd-1].dupAck.seq == ack) {
             sockets[fd-1].dupAck.count++;
             if(sockets[fd-1].dupAck.count == TCP_FT_DUP) {
-                dbg(TRANSPORT_CHANNEL, "Fast retransmit: %u.\n", sockets[fd-1].lastAck + 1);
+                // dbg(TRANSPORT_CHANNEL, "Fast retransmit: %u.\n", sockets[fd-1].lastAck + 1);
                 // dbg(TRANSPORT_CHANNEL, "cwnd: %u. cwndRemainder %u\n", sockets[fd-1].cwnd, sockets[fd-1].cwndRemainder);
                 // cwnd = cwnd / 2
                 temp = calcCongWindow(fd);
@@ -380,7 +380,7 @@ implementation{
                 switch(sockets[i].state) {
                     case ESTABLISHED:
                         if(sockets[i].lastSent != sockets[i].lastAck && sockets[i].type == CLIENT && getSenderDataInFlight(i+1) > 0) {
-                            dbg(TRANSPORT_CHANNEL, "Resending at %u. Data in flight %u\n", sockets[i].lastSent+1, getSenderDataInFlight(i+1));
+                            // dbg(TRANSPORT_CHANNEL, "Resending at %u. Data in flight %u\n", sockets[i].lastSent+1, getSenderDataInFlight(i+1));
                             // Go back N
                             sockets[i].lastSent = sockets[i].lastAck;
                             // Adjust ssthresh, cwnd
@@ -574,12 +574,12 @@ implementation{
         uint32_t socketId = 0;
         switch(tcp_rcvd->flags) {
             case DATA:
-                if(dropCounter == 9) {
-                    packetsRcvd += dropCounter;
-                    dbg(TRANSPORT_CHANNEL, "Dropping tenth packet! Packets accepted %u.\n", packetsRcvd);
-                    dropCounter = 1;
-                    return SUCCESS;
-                }
+                // if(dropCounter == 9) {
+                //     packetsRcvd += dropCounter;
+                //     dbg(TRANSPORT_CHANNEL, "Dropping tenth packet! Packets accepted %u.\n", packetsRcvd);
+                //     dropCounter = 1;
+                //     return SUCCESS;
+                // }
                 // Find socket fd
                 fd = findSocket(TOS_NODE_ID, tcp_rcvd->destPort, src, tcp_rcvd->srcPort);                
                 switch(sockets[fd-1].state) {
@@ -636,7 +636,7 @@ implementation{
                                         sockets[fd-1].cwndRemainder = 0;
                                     }
                             }                        
-                            dbg(TRANSPORT_CHANNEL, "Data ACK received. New CWND %u\n", calcCongWindow(fd));
+                            // dbg(TRANSPORT_CHANNEL, "Data ACK received. New CWND %u\n", calcCongWindow(fd));
                         }
                         // dbg(TRANSPORT_CHANNEL, "ACK received. Adv. Win. %u\n", tcp_rcvd->advertisedWindow);
                         // Adjust last ack and adv window
