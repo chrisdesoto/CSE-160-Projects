@@ -23,7 +23,8 @@ implementation{
     tcp_pack tcpPack;
     bool ports[NUM_SUPPORTED_PORTS];
     socket_store_t sockets[MAX_NUM_OF_SOCKETS];
-    uint16_t dropCounter = 10;
+    uint16_t dropCounter = 1;
+    uint16_t packetsRcvd = 0;
 
     /*
     * Helper functions
@@ -181,7 +182,6 @@ implementation{
             tcpPack.seq = sockets[fd-1].lastSent + 1;
         }
         if(flags == DATA) {
-            // dbg(TRANSPORT_CHANNEL, "Sending seq: %u\n", tcpPack.seq);
             // Choose the min of the effective window, the number of bytes available to send, and the max packet size
             length = min(min(calcEffWindow(fd), calcCongWindow(fd) - getSenderDataInFlight(fd)), min(getSendBufferOccupied(fd), TCP_PACKET_PAYLOAD_SIZE));
             if(length == 0) {
@@ -193,21 +193,18 @@ implementation{
             }
             tcpPack.length = length;
         }
-        if(flags == ACK) {
-            dbg(TRANSPORT_CHANNEL, "Sending ACK: %u\n", tcpPack.ack);
-        }
         makePack(&ipPack, TOS_NODE_ID, sockets[fd-1].dest.addr, BETTER_TTL, PROTOCOL_TCP, 0, &tcpPack, sizeof(tcp_pack));
         call DistanceVectorRouting.routePacket(&ipPack);
         return bytes;
     }
 
     void sendWindow(uint8_t fd) {
-        uint16_t bytesRemaining = min(calcCongWindow(fd), min(getSendBufferOccupied(fd), calcEffWindow(fd)));
+        uint16_t bytesRemaining = min(calcCongWindow(fd) - getSenderDataInFlight(fd), min(getSendBufferOccupied(fd), calcEffWindow(fd)));
         uint8_t bytesSent;
         bool firstPacket = TRUE;
         while(bytesRemaining > 0 && bytesSent > 0 && calcCongWindow(fd) > getSenderDataInFlight(fd)) {
             if(firstPacket)
-                dbg(TRANSPORT_CHANNEL, "Data in flight %u, CWND %u, SSTHRESH %u, EWND %u\n", getSenderDataInFlight(fd), calcCongWindow(fd), sockets[fd-1].ssthresh, calcEffWindow(fd));
+                dbg(TRANSPORT_CHANNEL, "Sending %u bytes. Data in flight %u, CWND %u, SSTHRESH %u, EWND %u\n", bytesRemaining, getSenderDataInFlight(fd), calcCongWindow(fd), sockets[fd-1].ssthresh, calcEffWindow(fd));
             bytesSent = sendTCPPacket(fd, DATA);
             bytesRemaining -= bytesSent;
             if(firstPacket && bytesSent > 0) {
@@ -218,21 +215,31 @@ implementation{
     }
 
     bool handleFT(uint8_t fd, uint16_t ack) {
+        uint8_t temp;
         if(sockets[fd-1].dupAck.seq == ack) {
             sockets[fd-1].dupAck.count++;
             if(sockets[fd-1].dupAck.count == TCP_FT_DUP) {
-                dbg(TRANSPORT_CHANNEL, "Fast retransmit: %u\n", sockets[fd-1].lastAck + 1);
+                dbg(TRANSPORT_CHANNEL, "Fast retransmit: %u.\n", sockets[fd-1].lastAck + 1);
+                // dbg(TRANSPORT_CHANNEL, "cwnd: %u. cwndRemainder %u\n", sockets[fd-1].cwnd, sockets[fd-1].cwndRemainder);
                 // cwnd = cwnd / 2
-                sockets[fd-1].cwnd = max(sockets[fd-1].cwnd >> 1, TCP_MIN_CWND);
-                sockets[fd-1].cwndRemainder >>= 1;
+                temp = calcCongWindow(fd);
+                sockets[fd-1].cwnd = max((temp >> 1) / TCP_PACKET_PAYLOAD_SIZE, TCP_MIN_CWND);
+                sockets[fd-1].cwndRemainder = (((temp >> 1) % TCP_PACKET_PAYLOAD_SIZE) * sockets[fd-1].cwnd) / TCP_PACKET_PAYLOAD_SIZE;
                 // ssthresh = cwnd / 2
                 sockets[fd-1].ssthresh = calcCongWindow(fd);
                 // AIMD
                 sockets[fd-1].cwndStrategy = AIMD;
                 // Retransmit
-                sockets[fd-1].lastSent = sockets[fd-1].lastAck;                
+                sockets[fd-1].lastSent = sockets[fd-1].lastAck;
                 sendWindow(fd);
-                sockets[fd-1].dupAck.count = 0;
+                return TRUE;
+            } else if(sockets[fd-1].dupAck.count > TCP_FT_DUP) {
+                // dbg(TRANSPORT_CHANNEL, "Duplicate data ACK received. CWND += 1 / CWND\n", calcCongWindow(fd));
+                sockets[fd-1].cwndRemainder++;
+                if(sockets[fd-1].cwnd == sockets[fd-1].cwndRemainder) {
+                    sockets[fd-1].cwnd++;
+                    sockets[fd-1].cwndRemainder = 0;
+                }
                 return TRUE;
             }
         } else {
@@ -249,6 +256,7 @@ implementation{
             // dbg(TRANSPORT_CHANNEL, "Dropping packet. Can't fit data in buffer OR incorrect seq num. Length: %u. Adv Window: %u, Buffer Available: %u\n", tcp_rcvd->length, sockets[fd-1].advertisedWindow, getReceiveBufferAvailable(fd));
             return;
         }
+        dropCounter++;
         // dbg(TRANSPORT_CHANNEL, "Reading in data with sequence number %u.\n", tcp_rcvd->seq);
         while(bytesRead < tcp_rcvd->length && getReceiveBufferAvailable(fd) > 0) {
             memcpy(&sockets[fd-1].rcvdBuff[(++sockets[fd-1].lastRcvd) % SOCKET_BUFFER_SIZE], payload+bytesRead, 1);
@@ -376,13 +384,10 @@ implementation{
                             // Go back N
                             sockets[i].lastSent = sockets[i].lastAck;
                             // Adjust ssthresh, cwnd
-                            sockets[i].ssthresh = (max(sockets[i].cwnd >> 1,TCP_MIN_CWND) * TCP_PACKET_PAYLOAD_SIZE) + (sockets[i].cwndRemainder >> 1);
+                            sockets[i].ssthresh = max(calcCongWindow(i+1) >> 1,TCP_PACKET_PAYLOAD_SIZE);
                             sockets[i].cwnd = TCP_MIN_CWND;
                             sockets[i].cwndRemainder = 0;
-                            if(calcCongWindow(i+1) < sockets[i].ssthresh)
-                                sockets[i].cwndStrategy = SLOW_START;
-                            else
-                                sockets[i].cwndStrategy = AIMD;
+                            sockets[i].cwndStrategy = SLOW_START;
                             // Resend window
                             sendWindow(i+1);
                             // Double the RTO
@@ -391,7 +396,7 @@ implementation{
                             sockets[i].IS_VALID_RTT = FALSE;
                             continue;
                         } else if(sockets[i].type == SERVER && sockets[i].deadlockAck) {
-                            // dbg(TRANSPORT_CHANNEL, "Sending ACK. Adv. Win. %u\n", calcAdvWindow(i+1));
+                            // dbg(TRANSPORT_CHANNEL, "Sending deadlock ACK. Adv. Win. %u\n", calcAdvWindow(i+1));
                             sendTCPPacket(i+1, ACK);
                             sockets[i].RTO = call TransmissionTimer.getNow() + TCP_DEADLOCK_ACK_RTO;                            
                         }
@@ -569,11 +574,12 @@ implementation{
         uint32_t socketId = 0;
         switch(tcp_rcvd->flags) {
             case DATA:
-                // if(--dropCounter == 0) {
-                //     dbg(TRANSPORT_CHANNEL, "Dropping tenth packet\n");
-                //     dropCounter = 10;
-                //     return SUCCESS;
-                // }
+                if(dropCounter == 9) {
+                    packetsRcvd += dropCounter;
+                    dbg(TRANSPORT_CHANNEL, "Dropping tenth packet! Packets accepted %u.\n", packetsRcvd);
+                    dropCounter = 1;
+                    return SUCCESS;
+                }
                 // Find socket fd
                 fd = findSocket(TOS_NODE_ID, tcp_rcvd->destPort, src, tcp_rcvd->srcPort);                
                 switch(sockets[fd-1].state) {
@@ -586,7 +592,7 @@ implementation{
                         //dbg(TRANSPORT_CHANNEL, "Data received on node %u via port %u\n", TOS_NODE_ID, tcp_rcvd->destPort);
                         readInData(fd, tcp_rcvd);
                         // Send ACK
-                        sendTCPPacket(fd, ACK);                        
+                        sendTCPPacket(fd, ACK);
                         return SUCCESS;
                 }
                 break;
@@ -629,7 +635,8 @@ implementation{
                                         sockets[fd-1].cwnd++;
                                         sockets[fd-1].cwndRemainder = 0;
                                     }
-                            }
+                            }                        
+                            dbg(TRANSPORT_CHANNEL, "Data ACK received. New CWND %u\n", calcCongWindow(fd));
                         }
                         // dbg(TRANSPORT_CHANNEL, "ACK received. Adv. Win. %u\n", tcp_rcvd->advertisedWindow);
                         // Adjust last ack and adv window

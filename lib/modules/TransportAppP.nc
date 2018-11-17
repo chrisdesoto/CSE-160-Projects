@@ -203,18 +203,18 @@ implementation{
             // Print out received data
             while(getServerBufferOccupied(i) >= 2) {
                 if(!isRead) {
-                    dbg(TRANSPORT_CHANNEL, "Reading Data at %u: ", server[i].bytesRead);
+                    // dbg(TRANSPORT_CHANNEL, "Reading Data at %u: ", server[i].bytesRead);
                     isRead = TRUE;
                 }
                 if(server[i].bytesRead == TCP_APP_BUFFER_SIZE) {
                     server[i].bytesRead = 0;
                 }
                 data = (((uint16_t)server[i].buffer[server[i].bytesRead+1]) << 8) | (uint16_t)server[i].buffer[server[i].bytesRead];
-                printf("%u,", data);
+                // printf("%u,", data);
                 server[i].bytesRead += 2;
             }
-            if(isRead)
-                printf("\n");
+            // if(isRead)
+                // printf("\n");
         }
     }
 
