@@ -177,6 +177,7 @@ implementation{
         tcpPack.ack = sockets[fd-1].nextExpected;
         // Send initial sequence number or next expected
         if(flags == SYN) {
+            dbg(TRANSPORT_CHANNEL, "Sending SYN to port %u on node %u\n", sockets[fd-1].dest.port, sockets[fd-1].dest.addr);
             tcpPack.seq = sockets[fd-1].lastSent;
         } else {
             tcpPack.seq = sockets[fd-1].lastSent + 1;
@@ -663,14 +664,16 @@ implementation{
                 }
                 break;
             case SYN:
-                // Check of connection already exists
-                fd = findSocket(TOS_NODE_ID, tcp_rcvd->destPort, package->src, tcp_rcvd->srcPort);
-                if(fd != 0)
-                    break;
-                // Find socket fd
+                // Find listening socket fd
+                socketId = (((uint32_t)TOS_NODE_ID) << 24) | (((uint32_t)tcp_rcvd->destPort) << 16) | (((uint32_t)package->src) << 8) | (((uint32_t)tcp_rcvd->srcPort));
+                if(call SocketMap.contains(socketId)) {
+                    dbg(TRANSPORT_CHANNEL, "SYN received: failed to insert socket\n");
+                    return FAIL;
+                }
+                // Find listening socket fd
                 fd = findSocket(TOS_NODE_ID, tcp_rcvd->destPort, 0, 0);                
                 if(fd == 0)
-                    break;
+                    return FAIL;
                 switch(sockets[fd-1].state) {
                     case LISTEN:
                         // Create new active socket
@@ -688,10 +691,10 @@ implementation{
                             sendTCPPacket(newFd, SYN_ACK);
                             dbg(TRANSPORT_CHANNEL, "SYN_ACK sent on node %u via port %u\n", TOS_NODE_ID, tcp_rcvd->destPort);
                             // Add the new fd to the socket map
-                            socketId = (((uint32_t)TOS_NODE_ID) << 24) | (((uint32_t)tcp_rcvd->destPort) << 16) | (((uint32_t)src) << 8) | (((uint32_t)tcp_rcvd->srcPort));
                             call SocketMap.insert(socketId, newFd);
                             return SUCCESS;
-                        }                        
+                            
+                        }
                 }
                 break;
             case SYN_ACK:                
@@ -825,7 +828,7 @@ implementation{
         call SocketMap.insert(socketId, fd);
         // Set SYN_SENT
         sockets[fd-1].state = SYN_SENT;
-        dbg(TRANSPORT_CHANNEL, "SYN sent on node %u via port %u\n", TOS_NODE_ID, sockets[fd-1].src.port);
+        dbg(TRANSPORT_CHANNEL, "SYN sent to port %u on node %u from node %u via port %u\n", dest->addr, dest->port, TOS_NODE_ID, sockets[fd-1].src.port);
         return SUCCESS;
     }
 

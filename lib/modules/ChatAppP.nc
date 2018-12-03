@@ -97,7 +97,7 @@ implementation{
         // If MSG
         } else if(startsWith(&chatApp.connections[idx].rcvdBuffer[chatApp.connections[idx].rcvdRead%CHAT_APP_BUFFER_SIZE], "msg ")) {
             // Broadcast msg to all other chat clients
-            dbg(CHAT_CHANNEL, "SERVER: Received msg\n");
+            dbg(CHAT_CHANNEL, "SERVER: Received msg from %s\n", chatApp.connections[idx].username);
             for(i = 0; i < CHAT_APP_MAX_CONNS; i++) {
                 if(chatApp.connections[i].writeFd > 0 && idx != i) {
                     j = 0;
@@ -115,7 +115,7 @@ implementation{
         // If WHISPER
         } else if(startsWith(&chatApp.connections[idx].rcvdBuffer[chatApp.connections[idx].rcvdRead%CHAT_APP_BUFFER_SIZE], "whisper ")) {
             // Send only to enumerated user
-            dbg(CHAT_CHANNEL, "SERVER: Received whisper\n");
+            dbg(CHAT_CHANNEL, "SERVER: Received whisper from %s\n", chatApp.connections[idx].username);
             for(i = 0; i < CHAT_APP_MAX_CONNS; i++) {                
                 if(chatApp.connections[i].writeFd > 0 && startsWith(&chatApp.connections[idx].rcvdBuffer[(chatApp.connections[idx].rcvdRead+8)%CHAT_APP_BUFFER_SIZE], &chatApp.connections[i].username)) {
                     dbg(CHAT_CHANNEL, "SERVER: Found user %s\n", chatApp.connections[i].username);
@@ -133,7 +133,7 @@ implementation{
         // If LISTUSR
         } else if(startsWith(&chatApp.connections[idx].rcvdBuffer[chatApp.connections[idx].rcvdRead%CHAT_APP_BUFFER_SIZE], "listusr\r\n")) {
             // List all users currenly connected
-            dbg(CHAT_CHANNEL, "SERVER: Received listusr\n");
+            dbg(CHAT_CHANNEL, "SERVER: Received listusr from %s\n", chatApp.connections[idx].username);
             usrList[0] = '\0';
             strcat(usrList, "usrListReply");
             for(i = 0; i < CHAT_APP_MAX_CONNS; i++) {
@@ -216,7 +216,7 @@ implementation{
                         // Get connection info and open a connection to the client
                         addr.addr = call Transport.getConnectionDest(newReadFd);
                         addr.port = CHAT_APP_SERVER_PORT;
-                        dbg(CHAT_CHANNEL, "newReadFd %u\n", newReadFd);
+                        // dbg(CHAT_CHANNEL, "newReadFd %u\n", newReadFd);
                         dbg(CHAT_CHANNEL, "Connecting back to client %u\n", addr.addr);
                         if(call Transport.connect(chatApp.connections[i].writeFd, &addr) == FAIL) {
                             dbg(CHAT_CHANNEL, "Failed to connect to server. Exiting!");
@@ -279,7 +279,7 @@ implementation{
                     // Print message if termination
                     if(chatApp.connections[0].rcvdBuffer[chatApp.connections[0].rcvdWritten % CHAT_APP_BUFFER_SIZE] == '\n' && chatApp.connections[0].rcvdBuffer[(chatApp.connections[0].rcvdWritten-1) % CHAT_APP_BUFFER_SIZE] == '\r') {
                         chatApp.connections[0].rcvdBuffer[chatApp.connections[0].rcvdWritten % CHAT_APP_BUFFER_SIZE] = '\0';
-                        dbg(CHAT_CHANNEL, "Chat Message: %s\n", &chatApp.connections[0].rcvdBuffer[chatApp.connections[0].rcvdRead % CHAT_APP_BUFFER_SIZE]);
+                        dbg(CHAT_CHANNEL, "CLIENT: %s\n", &chatApp.connections[0].rcvdBuffer[chatApp.connections[0].rcvdRead % CHAT_APP_BUFFER_SIZE]);
                         chatApp.connections[0].rcvdRead = chatApp.connections[0].rcvdWritten + 1;
                     }
                     chatApp.connections[0].rcvdWritten += bytes;                    
@@ -330,9 +330,14 @@ implementation{
                 if(call Transport.bind(chatApp.listenSockFd, &addr) == SUCCESS) {
                     // Listen on the port and start a timer if needed
                     if(call Transport.listen(chatApp.listenSockFd) == SUCCESS && !(call ChatTimer.isRunning())) {
+                        dbg(CHAT_CHANNEL, "Node %u listening on port 41\n", TOS_NODE_ID);
                         call ChatTimer.startPeriodic(1024 + (uint16_t) (call Random.rand16()%1000));
                     }
+                } else {
+                    dbg(CHAT_CHANNEL, "Failed to bind socket\n");
                 }
+        } else {
+            dbg(CHAT_CHANNEL, "Failed to obtain socket\n");
         }
         // Start client connection to node 1 on port 41
         addr.port = clientPort;
@@ -368,7 +373,7 @@ implementation{
         uint8_t port = 0;
         uint8_t count = 1;
 
-        dbg(CHAT_CHANNEL, "Received: %s", message);
+        dbg(CHAT_CHANNEL, "CLIENT: Sending %s", message);
         if(message[len-1] != '\n' || message[len-2] != '\r') {
             dbg(CHAT_CHANNEL, "Malformed chat message: incorrectly terminated\n");
             return;
@@ -404,11 +409,11 @@ implementation{
                 dbg(CHAT_CHANNEL, "Malformed chat message: say hello first\n");
                 return;
             }
-            dbg(CHAT_CHANNEL, "Handling msg/whisper/listusr: %s", message);
+            // dbg(CHAT_CHANNEL, "Handling msg/whisper/listusr: %s", message);
             i = 0;
             while(i <= len-1) {                
                 memcpy(&chatApp.connections[0].sendBuffer[chatApp.connections[0].sendWritten++ % CHAT_APP_BUFFER_SIZE], message+i, 1);
-                dbg(CHAT_CHANNEL, "Char written: %d\n", chatApp.connections[0].sendBuffer[(chatApp.connections[0].sendWritten-1) % CHAT_APP_BUFFER_SIZE]);
+                // dbg(CHAT_CHANNEL, "Char written: %d\n", chatApp.connections[0].sendBuffer[(chatApp.connections[0].sendWritten-1) % CHAT_APP_BUFFER_SIZE]);
                 i++;
             }
         } else {

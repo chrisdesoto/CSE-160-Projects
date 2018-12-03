@@ -29,13 +29,13 @@ def main():
 
     s.runTime(40)
 
-    s.cmdTestServer(1, 50)
+    s.cmdTestServer(12, 50)
     s.runTime(10)
 
-    s.cmdTestClient(12, 1, 25, 50, 150)
+    s.cmdTestClient(4, 12, 25, 50, 150)
     s.runTime(200)
 
-    s.cmdClientClose(12, 1, 25, 50)
+    s.cmdClientClose(4, 12, 25, 50)
     s.runTime(30)
 
 
