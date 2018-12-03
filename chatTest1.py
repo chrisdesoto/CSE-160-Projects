@@ -31,16 +31,22 @@ def main():
     s.runTime(40)
 
     s.chat(2, "hello chris 48\r\n")
-    s.runTime(50)
+    s.runTime(60)
 
-    s.chat(3, "hello khush 48\r\n")
-    s.runTime(50)
+    s.chat(3, "hello khush 125\r\n")
+    s.runTime(60)
 
-    s.chat(4, "hello kevin 48\r\n")
-    s.runTime(50)
-
-    s.chat(3, "listusr\r\n")
+    s.chat(5, "hello ashish 125\r\n")
     s.runTime(120)
+
+    s.chat(2, "msg hey everyone!\r\n")
+    s.runTime(50)
+
+    s.chat(3, "whisper ashish whatup?\r\n")
+    s.runTime(50)
+    
+    s.chat(3, "listusr\r\n")
+    s.runTime(50)
 
 if __name__ == '__main__':
     main()

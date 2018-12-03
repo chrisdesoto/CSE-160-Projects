@@ -79,37 +79,6 @@ implementation{
     }
 
     // SERVER
-    void whisper(uint8_t idx) {
-        char resp[CHAT_APP_BUFFER_SIZE];    
-        uint8_t i, j;    
-        strcat(resp, "whisper ");
-        for(i = 0; i < CHAT_APP_MAX_CONNS; i++) {
-            j = 8;
-            while(chatApp.connections[idx].rcvdBuffer[(chatApp.connections[i].rcvdRead+j)%CHAT_APP_BUFFER_SIZE] != ' ') {
-                // if()
-            }
-        }
-
-    }
-
-    // SERVER
-    void listusr(uint8_t idx) {
-        char resp[CHAT_APP_BUFFER_SIZE];        
-        uint8_t i;
-        resp[0] = '\0';
-        strcat(resp, "listUsrReply");
-        for(i = 0; i < CHAT_APP_MAX_CONNS; i++) {
-            if(chatApp.connections[i].readFd != 0) {                
-                strcat(resp, " ");
-                strcat(resp, chatApp.connections[i].username);
-            }
-        }
-        strcat(resp, "\r\n");
-        memcpy(&chatApp.connections[idx].sendBuffer, resp, strlen(resp)-1);
-        // while(&chatApp.connections[i].rcvdBuffer[chatApp.connections[i].rcvdRead%CHAT_APP_BUFFER_SIZE]) {}
-    }
-
-    // SERVER
     void processCommand(uint8_t idx) {
         char usrList[1024];
         uint8_t i, j;        
@@ -280,7 +249,8 @@ implementation{
                     bytes = 1;
                     while(getSendBufferOccupied(i) > 0 && bytes > 0) {
                         bytes = call Transport.write(chatApp.connections[i].writeFd, &chatApp.connections[i].sendBuffer[chatApp.connections[i].sendRead % CHAT_APP_BUFFER_SIZE], 1);
-                        dbg(CHAT_CHANNEL, "SERVER: Writing %d to socket\n", chatApp.connections[i].sendBuffer[chatApp.connections[i].sendRead % CHAT_APP_BUFFER_SIZE]);
+                        // if(bytes > 0)
+                        //     dbg(CHAT_CHANNEL, "SERVER: Writing %d to socket\n", chatApp.connections[i].sendBuffer[chatApp.connections[i].sendRead % CHAT_APP_BUFFER_SIZE]);
                         chatApp.connections[i].sendRead += bytes;
                     }
                 }
@@ -392,67 +362,6 @@ implementation{
         }
     }
 
-    // // CLIENT
-    // command void ChatApp.chatMsg(char* message) {
-    //     // Write msg to sendBuffer
-    //     uint8_t i = 0;
-    //     char* msg = "msg ";
-    //     char* end = "\r\n";
-    //     while(i < strlen(hello)) {
-    //         memcpy(&chatApp.connections[0].sendBuffer[chatApp.connections[0].sendWritten++ % CHAT_APP_BUFFER_SIZE], hello+i, 1);
-    //         i++;
-    //     }
-    //     i = 0;
-    //     while(i < strlen(message)) {
-    //         memcpy(&chatApp.connections[0].sendBuffer[chatApp.connections[0].sendWritten++ % CHAT_APP_BUFFER_SIZE], message+i, 1);
-    //         i++;
-    //     }
-    //     i = 0;
-    //     while(i < strlen(end)) {
-    //         memcpy(&chatApp.connections[0].sendBuffer[chatApp.connections[0].sendWritten++ % CHAT_APP_BUFFER_SIZE], end+i, 1);
-    //         i++;
-    //     }
-    // }
-
-    // // CLIENT
-    // command void ChatApp.chatWhisper(char* username, char* msg) {
-    //     // Write whisper to sendBuffer
-    //     uint8_t i = 0;
-    //     char* whisper = "whisper ";
-    //     char* end = "\r\n";
-    //     while(i < strlen(whisper)) {
-    //         memcpy(&chatApp.connections[0].sendBuffer[chatApp.connections[0].sendWritten++ % CHAT_APP_BUFFER_SIZE], whisper+i, 1);
-    //         i++;
-    //     }
-    //     i = 0;
-    //     while(i < strlen(username)) {
-    //         memcpy(&chatApp.connections[0].sendBuffer[chatApp.connections[0].sendWritten++ % CHAT_APP_BUFFER_SIZE], msg+i, 1);
-    //         i++;
-    //     }
-
-    //     i = 0;
-    //     while(i < strlen(msg)) {
-    //         memcpy(&chatApp.connections[0].sendBuffer[chatApp.connections[0].sendWritten++ % CHAT_APP_BUFFER_SIZE], msg+i, 1);
-    //         i++;
-    //     }
-    //     i = 0;
-    //     while(i < strlen(end)) {
-    //         memcpy(&chatApp.connections[0].sendBuffer[chatApp.connections[0].sendWritten++ % CHAT_APP_BUFFER_SIZE], end+i, 1);
-    //         i++;
-    //     }
-    // }
-
-    // // CLIENT
-    // command void ChatApp.chatListUsr() {
-    //     // Write listusr to chatBuffer
-    //     uint8_t i = 0;
-    //     char* listusr = "listusr\r\n";
-    //     while(i < strlen(listusr)) {
-    //         memcpy(&chatApp.connections[0].sendBuffer[chatApp.connections[0].sendWritten++ % CHAT_APP_BUFFER_SIZE], listusr+i, 1);
-    //         i++;
-    //     }
-    // }
-
     command void ChatApp.chat(char* message) {
         uint16_t len = strlen(message);
         uint8_t i = len-3;
@@ -472,7 +381,7 @@ implementation{
             dbg(CHAT_CHANNEL, "Handling hello!\n");
             // String to int to get port
             while(message[i] != ' ') {
-                if(message[i] < '0' || message[i] >= '9') {
+                if(message[i] < '0' || message[i] > '9') {
                     dbg(CHAT_CHANNEL, "Malformed chat message: client port non-numeric\n");
                     return;
                 }
