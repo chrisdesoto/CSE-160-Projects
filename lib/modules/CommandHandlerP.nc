@@ -88,6 +88,33 @@ implementation{
                 signal CommandHandler.printMessage(&buff[0]);
                 break;
 
+            case CMD_CHAT:
+                dbg(COMMAND_CHANNEL, "Command Type: Chat\n");
+                signal CommandHandler.chat(&buff[0]);
+                break;
+
+            // case CMD_CHAT_HELLO:
+            //     dbg(COMMAND_CHANNEL, "Command Type: Chat hello\n");
+            //     signal CommandHandler.chatHello(&buff[0], &buff[1]);
+            //     break;
+
+            // case CMD_CHAT_MSG:
+            //     dbg(COMMAND_CHANNEL, "Command Type: Chat hello\n");
+            //     signal CommandHandler.chatMsg(&buff[0]);
+            //     break;
+
+
+            // case CMD_CHAT_WHISPER:
+            //     dbg(COMMAND_CHANNEL, "Command Type: Chat hello\n");
+            //     signal CommandHandler.chatWhisper(&buff[0]);
+            //     break;
+                
+
+            // case CMD_CHAT_LISTUSR:
+            //     dbg(COMMAND_CHANNEL, "Command Type: Chat listusr\n");
+            //     signal CommandHandler.chatListUsr();
+            //     break;
+                
             default:
                 dbg(COMMAND_CHANNEL, "CMD_ERROR: \"%d\" does not match any known commands.\n", msg->id);
                 break;

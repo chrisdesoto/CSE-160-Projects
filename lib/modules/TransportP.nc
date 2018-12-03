@@ -897,7 +897,7 @@ implementation{
         // Check for valid socket
         if(fd == 0 || fd > MAX_NUM_OF_SOCKETS) {
             return FAIL;
-        }
+        }        
         // Clear socket info
         zeroSocket(fd);
         return SUCCESS;
@@ -926,6 +926,10 @@ implementation{
         } else {
             return FAIL;
         }
+    }
+
+    command uint32_t Transport.getConnectionDest(socket_t fd) {
+        return sockets[fd-1].dest.addr;
     }
 
 }

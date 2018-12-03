@@ -21,6 +21,7 @@ module Node {
     uses interface Receive;
     uses interface Transport;
     uses interface TransportApp;
+    uses interface ChatApp;
     uses interface CommandHandler;
     uses interface Flooding;
     uses interface NeighborDiscovery as NeighborDiscovery;
@@ -36,6 +37,8 @@ implementation {
         call NeighborDiscovery.start();
         call DistanceVectorRouting.start();
         call Transport.start();
+        if(TOS_NODE_ID == 1)
+            call ChatApp.startChatServer();
         //call LinkStateRouting.start();
     }
 
@@ -107,8 +110,30 @@ implementation {
         call TransportApp.closeClient(dest, srcPort, destPort);
     }
 
-    event void CommandHandler.setAppServer() {}
+    event void CommandHandler.startChatServer() {
+        // Start listening on port 41
+        call ChatApp.startChatServer();
+    }
 
-    event void CommandHandler.setAppClient() {}
+    event void CommandHandler.chat(char* msg) {
+        call ChatApp.chat(msg);
+    }
 
+    // event void CommandHandler.chatHello(char* username, uint8_t clientPort) {
+    //     // Start local server on port 41
+    //     // Connect to remote server on port 41
+    //     call ChatApp.chatHello(username, clientPort);
+    // }
+
+    // event void CommandHandler.chatMsg(char* msg) {
+    //     call ChatApp.chatMsg(msg);
+    // }
+
+    // event void CommandHandler.chatWhisper(char* username, char* msg) {
+    //     call ChatApp.chatWhisper(username, msg);
+    // }
+
+    // event void CommandHandler.chatListUsr() {
+    //     call ChatApp.chatListUsr();
+    // }    
 }

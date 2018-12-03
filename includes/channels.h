@@ -16,6 +16,9 @@ char ROUTING_CHANNEL[]="routing";
 // Project 3
 char TRANSPORT_CHANNEL[]="transport";
 
+// Project 4
+char CHAT_CHANNEL[]="chat";
+
 // Personal Debuggin Channels for some of the additional models implemented.
 char HASHMAP_CHANNEL[]="hashmap";
 char MAPLIST_CHANNEL[]="maplist";

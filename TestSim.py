@@ -17,6 +17,11 @@ class TestSim:
     CMD_TEST_SERVER = 5
     CMD_PRINT_MESSAGE = 7
     CMD_CLIENT_CLOSE = 8
+    CMD_CHAT = 10
+    # CMD_CHAT_HELLO = 9
+    # CMD_CHAT_MSG = 10
+    # CMD_CHAT_WHISPER = 11
+    # CMD_CHAT_LISTUSR = 12
 
     # CHANNELS - see includes/channels.h
     COMMAND_CHANNEL="command";
@@ -30,7 +35,10 @@ class TestSim:
     ROUTING_CHANNEL="routing";
 
     # Project 3
-    TRANSPORT_CHANNEL="transport";
+    TRANSPORT_CHANNEL = "transport"
+
+    # Project 4
+    CHAT_CHANNEL = "chat"
 
     # Personal Debugging Channels for some of the additional models implemented.
     HASHMAP_CHANNEL="hashmap";
@@ -139,8 +147,20 @@ class TestSim:
     def cmdTestClient(self, src, dest, srcPort, destPort, transfer):
         self.sendCMD(self.CMD_TEST_CLIENT, src, "{0}{1}{2}{3}{4}".format(chr(dest), chr(srcPort), chr(destPort), chr(transfer >> 8), chr(transfer & 0xFF)))
 
-    def cmdClientClose(self, src, dest, srcPort, destPort):
-        self.sendCMD(self.CMD_CLIENT_CLOSE, src, "{0}{1}{2}".format(chr(dest), chr(srcPort), chr(destPort)))
+    def chat(self, src, msg):
+        self.sendCMD(self.CMD_CHAT, src, msg)
+
+    # def chatHello(self, src, username, clientPort):
+    #     self.sendCMD(self.CMD_CHAT_HELLO, src, username, "{0}".format(chr(clientPort)))
+
+    # def chatMsg(self, src, msg):
+    #     self.sendCMD(self.CMD_CHAT_MSG, src, msg)
+
+    # def chatWhisper(self, src, username, msg):
+    #     self.sendCMD(self.CMD_CHAT_WHISPER, src, username, msg)
+
+    # def chatListusr(self, src):
+    #     self.sendCMD(self.CMD_CHAT_LISTUSR, src)
 
     def addChannel(self, channelName, out=sys.stdout):
         print 'Adding Channel', channelName;

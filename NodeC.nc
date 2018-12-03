@@ -45,4 +45,7 @@ implementation {
 
     components TransportAppC;
     Node.TransportApp -> TransportAppC;
+
+    components ChatAppC;
+    Node.ChatApp -> ChatAppC;    
 }

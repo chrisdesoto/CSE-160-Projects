@@ -146,4 +146,6 @@ interface Transport{
     *   to listen else FAIL.
     */
     command error_t listen(socket_t fd);
+
+    command uint32_t getConnectionDest(socket_t fd);
 }
